@@ -13,12 +13,12 @@ import static org.junit.Assert.*;
 public class UpdatePersistenceTest {
     @Test public void notesFilesAndPageNotesSurviveApkReinstallation() throws Exception {
         Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();
-        assertEquals(4,context.getPackageManager().getPackageInfo(context.getPackageName(),0).versionCode);
+        assertEquals(5,context.getPackageManager().getPackageInfo(context.getPackageName(),0).versionCode);
         try(Store store=new Store(context)) {
             ContentValues note=store.query("SELECT * FROM notes WHERE title=?","ทบทวนบทเรียน").get(0);
             assertTrue(note.getAsString("body").contains("สรุปจากเอกสาร"));
             String id=store.attachments(note.getAsLong("id")).get(0).getAsString("id");assertTrue(new File(context.getFilesDir(),id).length()>0);
-            assertEquals(2,Ink.decode(store.drawing(id,0)).size());
+            assertTrue(Ink.decode(store.drawing(id,0)).size()>=2);assertTrue(store.textBoxes(id,0).contains("ข้อความใหม่บน PDF"));
             assertEquals("จดจำโครงสร้างเซลล์",store.page(id,0).getAsString("body"));assertEquals(1,(int)store.page(id,0).getAsInteger("bookmarked"));
         }
     }

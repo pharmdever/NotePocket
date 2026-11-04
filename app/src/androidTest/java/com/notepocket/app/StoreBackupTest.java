@@ -30,7 +30,7 @@ public class StoreBackupTest {
         legacy.execSQL("INSERT INTO note_docs VALUES(42,'legacy-doc')");legacy.close();
         store=new Store(context,"store-test.db");ContentValues old=store.note(42);
         assertEquals("ข้อมูลที่ต้องรักษา",old.getAsString("body"));assertEquals("ทั่วไป",old.getAsString("folder"));
-        assertEquals(1,store.attachments(42).size());assertEquals(0,(int)old.getAsInteger("deleted"));assertEquals(3,store.getReadableDatabase().getVersion());
+        assertEquals(1,store.attachments(42).size());assertEquals(0,(int)old.getAsInteger("deleted"));assertEquals(4,store.getReadableDatabase().getVersion());
     }
     private String document() throws Exception {
         String id=UUID.randomUUID().toString();File file=new File(context.getFilesDir(),id);files.add(file);byte[] bytes="original PDF bytes".getBytes(StandardCharsets.UTF_8);
@@ -39,14 +39,14 @@ public class StoreBackupTest {
     }
     @Test public void roundTripAddsCopiesAndPreservesAttachmentsPageNotesAndTrash() throws Exception {
         long note=store.save(-1,"ชีววิทยา","ทบทวน","<b>ทบทวน</b>","เรียน");store.flag(note,"pinned",1);store.flag(note,"deleted",1);
-        String doc=document();store.attach(note,doc);ContentValues page=store.page(doc,4);page.put("body","จำเรื่องเซลล์");page.put("bookmarked",1);store.savePage(page);store.remember(doc,4);store.saveDrawing(doc,4,Ink.encode(Arrays.asList(new Ink(false,0xff245BCC,0.004f,new float[]{0.1f,0.2f,0.5f,0.3f}))));
+        String doc=document();store.attach(note,doc);ContentValues page=store.page(doc,4);page.put("body","จำเรื่องเซลล์");page.put("bookmarked",1);store.savePage(page);store.remember(doc,4);store.saveText(doc,4,TextBox.encode(Arrays.asList(new TextBox("textbox-test","ข้อความไทย","sans",.1f,.1f,.6f,.04f,0xffE13A3A))));store.saveDrawing(doc,4,Ink.encode(Arrays.asList(new Ink(false,0xff245BCC,0.004f,new float[]{0.1f,0.2f,0.5f,0.3f}))));
         ByteArrayOutputStream bytes=new ByteArrayOutputStream();Backup.write(context,store,bytes);
         assertEquals(1,Backup.restore(context,store,new ByteArrayInputStream(bytes.toByteArray())));
         List<ContentValues> notes=store.query("SELECT * FROM notes ORDER BY id");assertEquals(2,notes.size());
         long restored=notes.get(1).getAsLong("id");assertNotEquals(note,restored);assertEquals("<b>ทบทวน</b>",notes.get(1).getAsString("rich"));assertEquals(1,(int)notes.get(1).getAsInteger("deleted"));
         String copy=store.attachments(restored).get(0).getAsString("id");assertNotEquals(doc,copy);
         assertEquals("จำเรื่องเซลล์",store.page(copy,4).getAsString("body"));assertEquals(1,(int)store.page(copy,4).getAsInteger("bookmarked"));assertEquals(4,store.lastPage(copy));
-        assertEquals(store.drawing(doc,4),store.drawing(copy,4));
+        assertEquals(store.drawing(doc,4),store.drawing(copy,4));assertEquals(store.textBoxes(doc,4),store.textBoxes(copy,4));
         assertEquals(new File(context.getFilesDir(),doc).length(),new File(context.getFilesDir(),copy).length());
     }
     @Test public void failedRestoreRollsBackWithoutChangingExistingData() throws Exception {
@@ -64,7 +64,7 @@ public class StoreBackupTest {
         try(ZipInputStream in=new ZipInputStream(new ByteArrayInputStream(bytes.toByteArray()));ZipOutputStream out=new ZipOutputStream(old)) {
             ZipEntry entry;while((entry=in.getNextEntry())!=null) {
                 out.putNextEntry(new ZipEntry(entry.getName()));ByteArrayOutputStream data=new ByteArrayOutputStream();Backup.copy(in,data,1000000);
-                if(entry.getName().equals("manifest.json")) {org.json.JSONObject manifest=new org.json.JSONObject(data.toString("UTF-8"));manifest.put("version",2);manifest.remove("page_ink");out.write(manifest.toString().getBytes(StandardCharsets.UTF_8));}
+                if(entry.getName().equals("manifest.json")) {org.json.JSONObject manifest=new org.json.JSONObject(data.toString("UTF-8"));manifest.put("version",2);manifest.remove("page_ink");manifest.remove("page_text");manifest.remove("fonts");out.write(manifest.toString().getBytes(StandardCharsets.UTF_8));}
                 else out.write(data.toByteArray());out.closeEntry();
             }
         }

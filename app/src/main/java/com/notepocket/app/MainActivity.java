@@ -20,13 +20,20 @@ import java.util.*;
 
 public class MainActivity extends Activity {
     private static final int GREEN=0xff216B58,INK=0xff203B34,MUTED=0xff748079,BG=0xffF5F6F1,LINE=0xffE4E8DF;
-    private static final int PICK=10,EXPORT=11,BACKUP=12,RESTORE=13,ANNOTATED=14;
+    private static final int PICK=10,EXPORT=11,BACKUP=12,RESTORE=13,ANNOTATED=14,FONT=15;
     private Store store;
     private LinearLayout root,list,attachments;
     private EditText title,body;
     private TextView savedLabel,pageLabel,bookmarkButton,inkStatus;
     private Button readMode,penMode,highlightMode;
     private String annotatedExportId;
+    private LinearLayout readerHeader,readerFooter;
+    private FrameLayout pdfStage;
+    private PopupWindow paletteWindow;
+    private ActionMode selectionAction;
+    private boolean fullscreen=false;
+    private java.util.function.Supplier<TextBox> textDraft;
+    private AlertDialog activeTextDialog;
     private String tab="notes",filter="all",query="",folder="ทั่วไป",pdfId,pdfName,exportId;
     private long noteId=-1,pendingAttach=-1,pdfReturnNote=-1;
     private boolean editor=false,loading=false,dirty=false,busy=false;
@@ -44,7 +51,7 @@ public class MainActivity extends Activity {
         if(state!=null) {
             tab=state.getString("tab","notes");filter=state.getString("filter","all");query=state.getString("query","");
             pendingAttach=state.getLong("pendingAttach",-1);exportId=state.getString("exportId");annotatedExportId=state.getString("annotatedExportId");
-            if(state.getString("pdfId")!=null) { pdfReturnNote=state.getLong("pdfReturnNote",-1);openPdf(state.getString("pdfId"),state.getString("pdfName","PDF"),state.getInt("page",0),pdfReturnNote);return; }
+            if(state.getString("pdfId")!=null) {pdfReturnNote=state.getLong("pdfReturnNote",-1);openPdf(state.getString("pdfId"),state.getString("pdfName","PDF"),state.getInt("page",0),pdfReturnNote);if(pdf!=null) {inkMode(state.getInt("pdfMode",0)==PdfPageView.SELECT?PdfPageView.READ:state.getInt("pdfMode",0));setFullscreen(state.getBoolean("fullscreen"));String draft=state.getString("textDraft");if(draft!=null) handler.post(()->{TextBox box=TextBox.decode(draft).get(0);editTextBox(box,box.x,box.y);});}return;}
             if(state.getBoolean("editor")) { edit(state.getLong("noteId",-1));return; }
         }
         home();
@@ -182,7 +189,7 @@ public class MainActivity extends Activity {
         LinearLayout format=horizontal(page);
         action(format,"ตัวหนา",() -> style(Typeface.BOLD),false);action(format,"เอียง",() -> style(Typeface.ITALIC),false);
         action(format,"☐ รายการ",() -> insertChecklist(),false);
-        body=input("เขียนสิ่งที่อยากจดจำ…",false);body.setSingleLine(false);body.setGravity(Gravity.TOP);body.setMinHeight(dp(280));body.setTextSize(18);
+        body=input("เขียนสิ่งที่อยากจดจำ…",false);body.setSingleLine(false);body.setGravity(Gravity.TOP);body.setMinHeight(dp(280));body.setTextSize(18);body.setTypeface(Fonts.typeface(this,readerPrefs().getString("font","sans")));
         body.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE|android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
         page.addView(body,new LinearLayout.LayoutParams(-1,-2));gap(page,12);
         page.addView(strong("ไฟล์แนบ",16));attachments=vertical();page.addView(attachments);
@@ -272,42 +279,97 @@ public class MainActivity extends Activity {
         handler.removeCallbacks(autosave);editor=false;closePdf();pdfReturnNote=backNote;
         try {
             pdfFd=ParcelFileDescriptor.open(new File(getFilesDir(),id),ParcelFileDescriptor.MODE_READ_ONLY);pdf=new PdfRenderer(pdfFd);if(pdf.getPageCount()<1) throw new IOException();
-            pdfId=id;pdfName=name;screen();titleBar(name,this::returnFromPdf);
-            LinearLayout tools=horizontal(root);
-            action(tools,"−",() -> pageView.zoomBy(0.8f),false);action(tools,"＋",() -> pageView.zoomBy(1.25f),false);
-            action(tools,"↶",() -> pageView.undo(),false);action(tools,"เครื่องมือ",this::inkTools,false);
-            LinearLayout modes=horizontal(root);
-            readMode=button("● อ่าน",() -> inkMode(PdfPageView.READ),true);penMode=button("ปากกา",() -> inkMode(PdfPageView.PEN),false);highlightMode=button("ไฮไลต์",() -> inkMode(PdfPageView.HIGHLIGHT),false);
-            for(Button mode:new Button[]{readMode,penMode,highlightMode}) {LinearLayout.LayoutParams layout=new LinearLayout.LayoutParams(0,-2,1);layout.setMargins(dp(3),dp(3),dp(3),dp(3));modes.addView(mode,layout);}
-            inkStatus=text("โหมดอ่าน · สองนิ้วซูม / ลากเพื่อเลื่อน",12,MUTED);root.addView(inkStatus);
-            pageView=new PdfPageView(this);
-            pageView.setListener(drawing -> {
-                try {store.saveDrawing(pdfId,pageIndex,drawing);inkStatus.setText("บันทึกเส้นแล้ว · ใช้สองนิ้วเพื่อซูม");return true;}
-                catch(Exception error) {inkStatus.setText("บันทึกเส้นไม่สำเร็จ");toast("บันทึกเส้นไม่ได้ กรุณาตรวจสอบพื้นที่ว่าง");return false;}
+            pdfId=id;pdfName=name;root=vertical();root.setBackgroundColor(BG);setContentView(root);
+            root.setOnApplyWindowInsetsListener((view,insets) -> {view.setPadding(fullscreen?0:insets.getSystemWindowInsetLeft(),fullscreen?0:insets.getSystemWindowInsetTop(),fullscreen?0:insets.getSystemWindowInsetRight(),fullscreen?0:insets.getSystemWindowInsetBottom());return insets;});
+            readerHeader=horizontal(root);readerHeader.setPadding(dp(4),0,dp(4),0);
+            Button back=compact("‹",this::returnFromPdf);back.setContentDescription("กลับจาก PDF");readerHeader.addView(back,new LinearLayout.LayoutParams(dp(48),dp(48)));
+            TextView heading=strong(name,16);heading.setSingleLine();heading.setEllipsize(TextUtils.TruncateAt.END);readerHeader.addView(heading,new LinearLayout.LayoutParams(0,-2,1));
+            Button full=compact("⛶",() -> setFullscreen(!fullscreen));full.setContentDescription("เต็มจอ");readerHeader.addView(full,new LinearLayout.LayoutParams(dp(48),dp(48)));
+            readerHeader.addView(compact("⋮",this::inkTools),new LinearLayout.LayoutParams(dp(48),dp(48)));
+            pdfStage=new FrameLayout(this);root.addView(pdfStage,new LinearLayout.LayoutParams(-1,0,1));
+            inkStatus=text("",12,MUTED);pageView=new PdfPageView(this);pdfStage.addView(pageView,new FrameLayout.LayoutParams(-1,-1));
+            pageView.setListener(drawing -> {try {store.saveDrawing(pdfId,pageIndex,drawing);return true;}catch(Exception error) {toast("บันทึกรอยเขียนไม่ได้ กรุณาตรวจสอบพื้นที่ว่าง");return false;}});
+            pageView.setTextListener(new PdfPageView.TextListener() {
+                public void edit(TextBox box,float x,float y) {editTextBox(box,x,y);}
+                public boolean save(String boxes) {try {store.saveText(pdfId,pageIndex,boxes);return true;}catch(Exception error) {toast("บันทึกข้อความไม่ได้");return false;}}
             });
-            root.addView(pageView,new LinearLayout.LayoutParams(-1,0,1));gap(root,8);
-            LinearLayout navigation=horizontal(root);
-            action(navigation,"‹ ก่อนหน้า",() -> renderPage(pageIndex-1),false);
-            pageLabel=text("",14,INK);pageLabel.setGravity(Gravity.CENTER);pageLabel.setOnClickListener(v -> jumpPage());navigation.addView(pageLabel,new LinearLayout.LayoutParams(0,dp(48),1));
-            action(navigation,"ถัดไป ›",() -> renderPage(pageIndex+1),false);
-            LinearLayout notes=horizontal(root);action(notes,"จดหน้านี้",this::pageNote,true);
-            Button bookmark=button("☆ บันทึกหน้า",this::toggleBookmark,false);bookmarkButton=bookmark;LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,-2,1);p.setMargins(dp(3),dp(3),dp(3),dp(3));notes.addView(bookmark,p);
-            renderPage(Math.max(0,Math.min(page,pdf.getPageCount()-1)));
+            pageView.setSelectionListener(new PdfPageView.SelectionListener() {
+                public void selected() {selectionActions();}
+                public void request(float u,float v) {loadSelection(u,v);}
+            });
+            Button palette=compact("เครื่องมือ",this::showPalette);palette.setContentDescription("เปิดเครื่องมือลอย");
+            FrameLayout.LayoutParams floating=new FrameLayout.LayoutParams(dp(104),dp(44),Gravity.END|Gravity.BOTTOM);floating.setMargins(dp(12),dp(12),dp(12),dp(12));pdfStage.addView(palette,floating);
+            readerFooter=horizontal(root);readerFooter.setPadding(dp(4),0,dp(4),0);
+            Button previous=compact("‹",() -> renderPage(pageIndex-1));previous.setContentDescription("หน้าก่อนหน้า");readerFooter.addView(previous,new LinearLayout.LayoutParams(dp(48),dp(48)));
+            pageLabel=text("",14,INK);pageLabel.setGravity(Gravity.CENTER);pageLabel.setOnClickListener(v -> jumpPage());readerFooter.addView(pageLabel,new LinearLayout.LayoutParams(0,dp(48),1));
+            Button next=compact("›",() -> renderPage(pageIndex+1));next.setContentDescription("หน้าถัดไป");readerFooter.addView(next,new LinearLayout.LayoutParams(dp(48),dp(48)));
+            Button note=compact("จด",this::pageNote);note.setContentDescription("จดหน้านี้");readerFooter.addView(note,new LinearLayout.LayoutParams(dp(52),dp(48)));
+            bookmarkButton=compact("☆",this::toggleBookmark);bookmarkButton.setContentDescription("บุ๊กมาร์กหน้านี้");readerFooter.addView(bookmarkButton,new LinearLayout.LayoutParams(dp(48),dp(48)));
+            applyReaderSettings();renderPage(Math.max(0,Math.min(page,pdf.getPageCount()-1)));root.requestApplyInsets();
         } catch(Exception e) {returnFromPdf();toast("เปิด PDF ไม่ได้ ไฟล์อาจเสียหายหรือมีรหัสผ่าน");}
+    }
+    private Button compact(String value,Runnable callback) {Button button=button(value,callback,false);button.setMinHeight(0);button.setMinimumHeight(0);button.setPadding(dp(5),0,dp(5),0);button.setTextSize(14);return button;}
+    private SharedPreferences readerPrefs() {return getSharedPreferences("reader",0);}
+    private void applyReaderSettings() {
+        if(pageView!=null) {pageView.setFitWidth(readerPrefs().getBoolean("fitWidth",true));pageView.setHighlightOpacity(readerPrefs().getInt("opacity",24));}
+        if(readerPrefs().getBoolean("keepAwake",false)&&pdf!=null) getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+    }
+    private void setFullscreen(boolean value) {
+        fullscreen=value;if(readerHeader!=null) readerHeader.setVisibility(value?View.GONE:View.VISIBLE);if(readerFooter!=null) readerFooter.setVisibility(value?View.GONE:View.VISIBLE);
+        if(android.os.Build.VERSION.SDK_INT>=30) {
+            android.view.WindowInsetsController controller=getWindow().getInsetsController();if(controller!=null) {if(value) {controller.setSystemBarsBehavior(android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);controller.hide(android.view.WindowInsets.Type.systemBars());}else controller.show(android.view.WindowInsets.Type.systemBars());}
+        } else getWindow().getDecorView().setSystemUiVisibility(value?View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY|View.SYSTEM_UI_FLAG_FULLSCREEN|View.SYSTEM_UI_FLAG_HIDE_NAVIGATION|View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN|View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION:View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR|View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
+        if(root!=null) root.requestApplyInsets();
+    }
+    private void showPalette() {
+        if(paletteWindow!=null) paletteWindow.dismiss();GridLayout grid=new GridLayout(this);grid.setColumnCount(3);grid.setPadding(dp(6),dp(6),dp(6),dp(6));grid.setBackground(background(Color.WHITE,16));
+        String[] labels={"อ่าน","ปากกา","ไฮไลต์","เลือกข้อความ","ข้อความ","↶","ทำซ้ำ","สี","ขนาด","จดหน้านี้","บุ๊กมาร์ก",fullscreen?"ออกเต็มจอ":"เต็มจอ","ส่งออก PDF","ตั้งค่าตัวอ่าน","เพิ่มเติม"};
+        Runnable[] callbacks={()->inkMode(PdfPageView.READ),()->inkMode(PdfPageView.PEN),()->inkMode(PdfPageView.HIGHLIGHT),()->loadSelection(-1,-1),()->inkMode(PdfPageView.TEXT),()->pageView.undo(),()->pageView.redo(),this::chooseInkColor,this::chooseInkWidth,this::pageNote,this::bookmarkMenu,()->setFullscreen(!fullscreen),this::exportAnnotated,this::readerSettings,this::inkTools};
+        for(int i=0;i<labels.length;i++) {final int index=i;Button item=compact(labels[i],() -> {paletteWindow.dismiss();callbacks[index].run();});GridLayout.LayoutParams p=new GridLayout.LayoutParams();p.width=dp(94);p.height=dp(46);p.setMargins(dp(2),dp(2),dp(2),dp(2));grid.addView(item,p);}
+        ScrollView scroll=new ScrollView(this);scroll.addView(grid);int height=Math.min(dp(270),Math.max(dp(120),pdfStage.getHeight()-dp(40)));
+        paletteWindow=new PopupWindow(scroll,Math.min(dp(310),getResources().getDisplayMetrics().widthPixels-dp(12)),height,true);paletteWindow.setBackgroundDrawable(background(Color.WHITE,16));paletteWindow.setOutsideTouchable(true);paletteWindow.setElevation(dp(12));paletteWindow.showAtLocation(pdfStage,Gravity.END|Gravity.BOTTOM,dp(8),fullscreen?dp(62):dp(110));
+    }
+    private void inkMode(int mode) {if(selectionAction!=null) selectionAction.finish();pageView.setMode(mode);if(mode==PdfPageView.TEXT) toast("แตะพื้นที่ว่างเพื่อเพิ่มข้อความ แตะข้อความเพื่อแก้ และลากเพื่อย้าย");updatePageLabels();}
+    private void chooseInkColor() {
+        boolean highlight=pageView.getMode()==PdfPageView.HIGHLIGHT;int[] colors=highlight?new int[]{0xffFFD54F,0xff81C784,0xffF48FB1,0xff81D4FA}:new int[]{0xff245BCC,0xffE13A3A,0xff222222,0xff216B58};
+        new AlertDialog.Builder(this).setTitle(highlight?"สีไฮไลต์":"สีปากกา").setItems(highlight?new String[]{"เหลือง","เขียว","ชมพู","ฟ้า"}:new String[]{"น้ำเงิน","แดง","ดำ","เขียว"},(dialog,index) -> {pageView.setInkColor(colors[index]);if(pageView.getMode()==PdfPageView.READ) inkMode(PdfPageView.PEN);}).show();
+    }
+    private void chooseInkWidth() {new AlertDialog.Builder(this).setTitle("ขนาดเส้น").setItems(new String[]{"บาง","กลาง","หนา"},(d,w)->pageView.setWidthFactor(new float[]{.6f,1,1.8f}[w])).show();}
+    private void inkTools() {
+        pageView.commitGesture();new AlertDialog.Builder(this).setTitle("เครื่องมือ PDF").setItems(new String[]{"เปิดเครื่องมือลอย","ย้อนกลับเส้นล่าสุด","ทำซ้ำเส้นที่ย้อนกลับ","สีปากกา / ไฮไลต์","ขนาดเส้น","ล้างรอยเขียนหน้านี้","บุ๊กมาร์กและหน้าที่จด","ส่งออก PDF ที่เขียนแล้ว","เต็มจอ / ออกจากเต็มจอ","ตั้งค่าตัวอ่าน","จัดการฟอนต์"},(d,index) -> {
+            switch(index) {case 0:showPalette();break;case 1:pageView.undo();break;case 2:pageView.redo();break;case 3:chooseInkColor();break;case 4:chooseInkWidth();break;case 5:confirm("ล้างรอยเขียนหน้านี้?","ลบเส้นปากกาและไฮไลต์ในหน้านี้ ข้อความที่เพิ่มและ PDF ต้นฉบับยังอยู่",()->pageView.clearDrawing());break;case 6:bookmarkMenu();break;case 7:exportAnnotated();break;case 8:setFullscreen(!fullscreen);break;case 9:readerSettings();break;case 10:closePdf();tab="settings";home();manageFonts();break;}
+        }).show();
+    }
+    private void loadSelection(float u,float v) {
+        String doc=pdfId;int page=pageIndex;final java.util.concurrent.atomic.AtomicReference<List<PdfWords.Glyph>> result=new java.util.concurrent.atomic.AtomicReference<>();
+        runIo("กำลังอ่านตำแหน่งข้อความ…",() -> {result.set(PdfWords.read(this,doc,page));return result.get().isEmpty()?"หน้านี้ไม่มีข้อความที่เลือกได้ อาจเป็นภาพสแกน ใช้ไฮไลต์แบบลากได้ครับ":"ลากเลือกข้อความ แล้วแตะไฮไลต์หรือคัดลอก";},() -> {
+            if(pdf==null||!doc.equals(pdfId)||page!=pageIndex) return;
+            if(result.get().isEmpty()) {inkMode(PdfPageView.HIGHLIGHT);return;}pageView.setWords(result.get());inkMode(PdfPageView.SELECT);if(u>=0) pageView.selectAt(u,v);
+        });
+    }
+    private void selectionActions() {
+        if(selectionAction!=null) return;
+        selectionAction=startActionMode(new ActionMode.Callback() {
+            public boolean onCreateActionMode(ActionMode action,Menu menu) {menu.add(0,1,0,"ไฮไลต์").setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS);menu.add(0,2,1,"คัดลอก").setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM);return true;}
+            public boolean onPrepareActionMode(ActionMode action,Menu menu) {return false;}
+            public boolean onActionItemClicked(ActionMode action,MenuItem item) {if(item.getItemId()==1) pageView.highlightSelection();else ((android.content.ClipboardManager)getSystemService(CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("PDF",pageView.selectedText()));action.finish();return true;}
+            public void onDestroyActionMode(ActionMode action) {if(pageView!=null) pageView.clearSelection();selectionAction=null;}
+        });
     }
     private void renderPage(int index) {
         if(pdf==null||index<0||index>=pdf.getPageCount()) return;
-        if(pageView!=null) pageView.commitGesture();
+        if(selectionAction!=null) selectionAction.finish();if(pageView!=null) pageView.commitGesture();
         try(PdfRenderer.Page p=pdf.openPage(index)) {
             float scale=Math.min(3f,Math.min(2200f/p.getWidth(),3000f/p.getHeight()));
             Bitmap next=Bitmap.createBitmap(Math.max(1,Math.round(p.getWidth()*scale)),Math.max(1,Math.round(p.getHeight()*scale)),Bitmap.Config.ARGB_8888);
             next.eraseColor(Color.WHITE);p.render(next,null,null,PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY);pageView.setPage(next);
-            if(pageBitmap!=null) pageBitmap.recycle();pageBitmap=next;pageIndex=index;pageView.setDrawing(store.drawing(pdfId,index));store.remember(pdfId,index);updatePageLabels();
+            if(pageBitmap!=null) pageBitmap.recycle();pageBitmap=next;pageIndex=index;pageView.setDrawing(store.drawing(pdfId,index));pageView.setTextBoxes(store.textBoxes(pdfId,index));store.remember(pdfId,index);updatePageLabels();
         } catch(Exception|OutOfMemoryError e) {toast("แสดงหน้านี้ไม่ได้ ลองปิดแอปอื่นแล้วเปิดใหม่");}
     }
     private void updatePageLabels() {
         ContentValues page=store.page(pdfId,pageIndex);pageLabel.setText((pageIndex+1)+" / "+pdf.getPageCount());
-        bookmarkButton.setText(page.getAsInteger("bookmarked")==1?"★ บันทึกแล้ว":"☆ บันทึกหน้า");
+        bookmarkButton.setText(page.getAsInteger("bookmarked")==1?"★":"☆");
+        pageLabel.setText((pageIndex+1)+" / "+pdf.getPageCount()+" · "+new String[]{"อ่าน","ปากกา","ไฮไลต์","ข้อความ","เลือกข้อความ"}[pageView.getMode()]);
         pageView.setContentDescription("PDF หน้า "+(pageIndex+1)+" จาก "+pdf.getPageCount()+" หน้า เลือกปากกาหรือไฮไลต์เพื่อเขียน ใช้สองนิ้วซูม");
     }
     private void jumpPage() {
@@ -331,39 +393,70 @@ public class MainActivity extends Activity {
     }
     private void returnFromPdf() {long back=pdfReturnNote;closePdf();pdfReturnNote=-1;if(back>=0) edit(back);else home();}
     private void closePdf() {
+        if(selectionAction!=null) selectionAction.finish();if(paletteWindow!=null) {paletteWindow.dismiss();paletteWindow=null;}
+        setFullscreen(false);readerHeader=readerFooter=null;pdfStage=null;getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         if(pageView!=null) {pageView.commitGesture();pageView.setPage(null);pageView=null;}
         if(pageBitmap!=null) {pageBitmap.recycle();pageBitmap=null;}
         if(pdf!=null) {pdf.close();pdf=null;}
         if(pdfFd!=null) {try {pdfFd.close();}catch(IOException ignored) {}pdfFd=null;}pdfId=null;
-    }
-    private void inkMode(int mode) {
-        pageView.setMode(mode);String[] names={"อ่าน","ปากกา","ไฮไลต์"};Button[] buttons={readMode,penMode,highlightMode};
-        for(int i=0;i<buttons.length;i++) {buttons[i].setText((mode==i?"● ":"")+names[i]);buttons[i].setTextColor(mode==i?Color.WHITE:GREEN);buttons[i].setBackground(background(mode==i?GREEN:0xffE7EEE4,14));}
-        inkStatus.setText(mode==PdfPageView.READ?"โหมดอ่าน · สองนิ้วซูม / ลากเพื่อเลื่อน":"เขียนได้เลย · ยกนิ้วเพื่อบันทึก · สองนิ้วซูม");
-    }
-    private void inkTools() {
-        pageView.commitGesture();
-        new AlertDialog.Builder(this).setTitle("เครื่องมือ PDF").setItems(new String[]{"ย้อนกลับเส้นล่าสุด","ทำซ้ำเส้นที่ย้อนกลับ","สีปากกา / ไฮไลต์","ขนาดเส้น","ล้างรอยเขียนหน้านี้","บุ๊กมาร์กและหน้าที่จด","ส่งออก PDF ที่เขียนแล้ว"},(dialog,index) -> {
-            if(index==0) pageView.undo();
-            else if(index==1) pageView.redo();
-            else if(index==2) {
-                boolean highlight=pageView.getMode()==PdfPageView.HIGHLIGHT;
-                int[] colors=highlight?new int[]{0xffFFD54F,0xff81C784,0xffF48FB1,0xff81D4FA}:new int[]{0xff245BCC,0xffE13A3A,0xff222222,0xff216B58};
-                new AlertDialog.Builder(this).setTitle(highlight?"สีไฮไลต์":"สีปากกา").setItems(highlight?new String[]{"เหลือง","เขียว","ชมพู","ฟ้า"}:new String[]{"น้ำเงิน","แดง","ดำ","เขียว"},(d,w) -> {pageView.setInkColor(colors[w]);if(pageView.getMode()==PdfPageView.READ) inkMode(PdfPageView.PEN);}).show();
-            } else if(index==3) new AlertDialog.Builder(this).setTitle("ขนาดเส้น").setItems(new String[]{"บาง","กลาง","หนา"},(d,w) -> pageView.setWidthFactor(new float[]{0.6f,1,1.8f}[w])).show();
-            else if(index==4) confirm("ล้างรอยเขียนหน้านี้?","ลบเฉพาะเส้นปากกาและไฮไลต์ในหน้านี้ ต้นฉบับ PDF และข้อความบันทึกยังอยู่",() -> pageView.clearDrawing());
-            else if(index==5) bookmarkMenu();
-            else exportAnnotated();
-        }).show();
     }
     private void exportAnnotated() {
         pageView.commitGesture();annotatedExportId=pdfId;
         Intent intent=new Intent(Intent.ACTION_CREATE_DOCUMENT);intent.addCategory(Intent.CATEGORY_OPENABLE);intent.setType("application/pdf");
         String name=pdfName.replaceFirst("(?i)\\.pdf$","");intent.putExtra(Intent.EXTRA_TITLE,name+"-annotated.pdf");startActivityForResult(intent,ANNOTATED);
     }
+    private List<ContentValues> availableFonts() {
+        List<ContentValues> fonts=new ArrayList<>();String[] ids={"sans","serif","mono"},names={"มาตรฐาน","Serif","Monospace"};
+        for(int i=0;i<ids.length;i++) {ContentValues row=new ContentValues();row.put("id",ids[i]);row.put("name",names[i]);fonts.add(row);}fonts.addAll(store.query("SELECT * FROM fonts ORDER BY name"));return fonts;
+    }
+    private void editTextBox(TextBox existing,float x,float y) {
+        String doc=pdfId;int page=pageIndex;if(doc==null) return;
+        LinearLayout fields=vertical();fields.setPadding(dp(16),0,dp(16),0);EditText value=input("ข้อความบน PDF",false);value.setMinLines(3);value.setMaxLines(7);value.setFilters(new InputFilter[]{new InputFilter.LengthFilter(2000)});if(existing!=null) value.setText(existing.text);fields.addView(value);
+        fields.addView(text("ฟอนต์",13,MUTED));Spinner font=new Spinner(this);font.setContentDescription("ฟอนต์ข้อความ");List<ContentValues> fonts=availableFonts();String[] names=new String[fonts.size()];String selected=existing==null?readerPrefs().getString("font","sans"):existing.font;
+        for(int i=0;i<names.length;i++) names[i]=fonts.get(i).getAsString("name");font.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,names));for(int i=0;i<fonts.size();i++) if(fonts.get(i).getAsString("id").equals(selected)) font.setSelection(i);fields.addView(font);
+        fields.addView(text("สีข้อความ",13,MUTED));Spinner color=new Spinner(this);color.setContentDescription("สีข้อความ");int[] colors={0xff222222,0xff245BCC,0xffE13A3A,0xff216B58,0xff8E44AD,0xffD36516};String[] colorNames={"ดำ","น้ำเงิน","แดง","เขียว","ม่วง","ส้ม"};color.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,colorNames));int initial=existing==null?readerPrefs().getInt("textColor",0xff245BCC):existing.color;for(int i=0;i<colors.length;i++) if(colors[i]==initial) color.setSelection(i);fields.addView(color);
+        TextView sizeLabel=text("",13,MUTED);fields.addView(sizeLabel);SeekBar size=new SeekBar(this);size.setContentDescription("ขนาดข้อความ");size.setMax(66);size.setProgress(Math.round((existing==null?readerPrefs().getInt("textSize",24):existing.size*600))-6);fields.addView(size);
+        TextView widthLabel=text("ความกว้างกล่องข้อความ",13,MUTED);fields.addView(widthLabel);SeekBar width=new SeekBar(this);width.setContentDescription("ความกว้างข้อความ");width.setMax(85);width.setProgress(Math.round((existing==null?.6f:existing.width)*100)-10);fields.addView(width);
+        Runnable preview=()->{value.setTextColor(colors[color.getSelectedItemPosition()]);value.setTypeface(Fonts.typeface(this,fonts.get(font.getSelectedItemPosition()).getAsString("id")));sizeLabel.setText("ขนาดข้อความ: "+(size.getProgress()+6));widthLabel.setText("ความกว้างกล่อง: "+(width.getProgress()+10)+"%");};
+        AdapterView.OnItemSelectedListener onSelect=new AdapterView.OnItemSelectedListener() {public void onItemSelected(AdapterView<?> a,View v,int p,long id) {preview.run();}public void onNothingSelected(AdapterView<?> a) {}};font.setOnItemSelectedListener(onSelect);color.setOnItemSelectedListener(onSelect);
+        SeekBar.OnSeekBarChangeListener onSeek=new SeekBar.OnSeekBarChangeListener() {public void onProgressChanged(SeekBar b,int p,boolean user) {preview.run();}public void onStartTrackingTouch(SeekBar b) {}public void onStopTrackingTouch(SeekBar b) {}};size.setOnSeekBarChangeListener(onSeek);width.setOnSeekBarChangeListener(onSeek);preview.run();
+        String boxId=existing==null?UUID.randomUUID().toString():existing.id;float bx=existing==null?Math.min(.85f,x):existing.x,by=existing==null?Math.min(.9f,y):existing.y;
+        textDraft=()->new TextBox(boxId,value.getText().toString(),fonts.get(font.getSelectedItemPosition()).getAsString("id"),bx,by,(width.getProgress()+10)/100f,(size.getProgress()+6)/600f,colors[color.getSelectedItemPosition()]);
+        ScrollView scroll=new ScrollView(this);scroll.addView(fields);AlertDialog.Builder builder=new AlertDialog.Builder(this).setTitle(existing==null?"เพิ่มข้อความบน PDF":"แก้ข้อความบน PDF").setView(scroll).setNegativeButton("ยกเลิก",null).setPositiveButton("บันทึก",null);
+        if(existing!=null) builder.setNeutralButton("ลบข้อความ",(d,w)->{try {List<TextBox> boxes=TextBox.decode(store.textBoxes(doc,page));boxes.removeIf(b->b.id.equals(boxId));store.saveText(doc,page,TextBox.encode(boxes));if(pageView!=null) pageView.setTextBoxes(store.textBoxes(doc,page));}catch(Exception error) {toast("ลบข้อความไม่สำเร็จ");}});
+        activeTextDialog=builder.create();activeTextDialog.setOnDismissListener(d->{textDraft=null;activeTextDialog=null;});activeTextDialog.setOnShowListener(d->activeTextDialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
+            if(value.getText().toString().trim().isEmpty()) {value.setError("กรุณาพิมพ์ข้อความ");return;}
+            try {TextBox box=textDraft.get();List<TextBox> boxes=TextBox.decode(store.textBoxes(doc,page));int at=-1;for(int i=0;i<boxes.size();i++) if(boxes.get(i).id.equals(boxId)) at=i;if(at>=0) boxes.set(at,box);else boxes.add(box);store.saveText(doc,page,TextBox.encode(boxes));
+                readerPrefs().edit().putString("font",box.font).putInt("textColor",box.color).putInt("textSize",size.getProgress()+6).apply();if(pageView!=null&&doc.equals(pdfId)&&page==pageIndex) pageView.setTextBoxes(store.textBoxes(doc,page));activeTextDialog.dismiss();keyboardOff();
+            }catch(Exception error) {toast("บันทึกข้อความไม่ได้ ตรวจสอบพื้นที่ว่างหรือจำนวนกล่องข้อความ");}
+        }));activeTextDialog.show();
+    }
+    private void readerSettings() {
+        LinearLayout fields=vertical();fields.setPadding(dp(18),0,dp(18),0);
+        CheckBox fit=new CheckBox(this);fit.setText("เปิด PDF ให้พอดีความกว้าง (เลื่อนขึ้น–ลงได้)");fit.setChecked(readerPrefs().getBoolean("fitWidth",true));fields.addView(fit);
+        CheckBox awake=new CheckBox(this);awake.setText("เปิดหน้าจอค้างขณะอ่าน PDF");awake.setChecked(readerPrefs().getBoolean("keepAwake",false));fields.addView(awake);
+        TextView label=text("ความเข้มไฮไลต์",14,INK);fields.addView(label);SeekBar opacity=new SeekBar(this);opacity.setMax(40);opacity.setProgress(readerPrefs().getInt("opacity",24)-10);fields.addView(opacity);
+        opacity.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {public void onProgressChanged(SeekBar b,int progress,boolean user) {label.setText("ความเข้มไฮไลต์: "+(progress+10)+"% · รักษาสีตัวอักษรเดิม");}public void onStartTrackingTouch(SeekBar b) {}public void onStopTrackingTouch(SeekBar b) {}});
+        new AlertDialog.Builder(this).setTitle("ตั้งค่าตัวอ่าน PDF").setView(fields).setNegativeButton("ยกเลิก",null).setPositiveButton("บันทึก",(d,w)->{readerPrefs().edit().putBoolean("fitWidth",fit.isChecked()).putBoolean("keepAwake",awake.isChecked()).putInt("opacity",opacity.getProgress()+10).apply();applyReaderSettings();}).show();
+    }
+    private void chooseDefaultFont() {
+        List<ContentValues> fonts=availableFonts();String[] names=new String[fonts.size()];for(int i=0;i<names.length;i++) names[i]=fonts.get(i).getAsString("name");
+        new AlertDialog.Builder(this).setTitle("ฟอนต์เริ่มต้นสำหรับโน้ตและข้อความใหม่").setItems(names,(d,w)->{readerPrefs().edit().putString("font",fonts.get(w).getAsString("id")).apply();toast("ตั้งฟอนต์เริ่มต้นแล้ว");}).show();
+    }
+    private void manageFonts() {
+        List<ContentValues> fonts=store.query("SELECT * FROM fonts ORDER BY name");String[] names=new String[fonts.size()+1];names[0]="＋ นำเข้าฟอนต์ TTF / OTF (ไม่เกิน 20 MB)";for(int i=0;i<fonts.size();i++) names[i+1]=fonts.get(i).getAsString("name");
+        new AlertDialog.Builder(this).setTitle("จัดการฟอนต์ · "+fonts.size()+" / 30").setItems(names,(d,w)->{
+            if(w==0) {Intent intent=new Intent(Intent.ACTION_OPEN_DOCUMENT);intent.addCategory(Intent.CATEGORY_OPENABLE);intent.setType("*/*");startActivityForResult(intent,FONT);}
+            else {ContentValues font=fonts.get(w-1);new AlertDialog.Builder(this).setTitle(font.getAsString("name")).setItems(new String[]{"ใช้เป็นฟอนต์เริ่มต้น","ลบฟอนต์"},(dialog,index)->{
+                if(index==0) {readerPrefs().edit().putString("font",font.getAsString("id")).apply();toast("ตั้งฟอนต์เริ่มต้นแล้ว");}
+                else confirm("ลบฟอนต์นี้?","ข้อความที่ใช้ฟอนต์นี้จะกลับไปใช้ฟอนต์มาตรฐาน โดยยังเก็บข้อความไว้",()->{Fonts.remove(this,store,font.getAsString("id"));manageFonts();});
+            }).show();}
+        }).show();
+    }
     private void settings() {
         LinearLayout page=scroll(root,1);LinearLayout about=card(page);
         about.addView(strong("ข้อมูลของคุณอยู่กับคุณ",21));about.addView(text("โน้ตและไฟล์อยู่ในเครื่อง ไม่ต้องสมัครบัญชี และใช้งานได้โดยไม่ต่ออินเทอร์เน็ต",15,MUTED));
+        LinearLayout reader=card(page);reader.addView(strong("การอ่านและเครื่องมือ",20));reader.addView(button("ตั้งค่าตัวอ่าน PDF",this::readerSettings,false));gap(reader,8);reader.addView(button("จัดการฟอนต์ TTF / OTF",this::manageFonts,false));gap(reader,8);reader.addView(button("เลือกฟอนต์เริ่มต้น",this::chooseDefaultFont,false));gap(reader,8);reader.addView(button("คืนค่าการตั้งค่าเริ่มต้น",()->confirm("คืนค่าการตั้งค่า?","โน้ต เอกสาร รอยเขียน และฟอนต์ที่นำเข้ายังคงอยู่",()->{readerPrefs().edit().clear().apply();applyReaderSettings();toast("คืนค่าการตั้งค่าแล้ว");}),false));
         LinearLayout backup=card(page);backup.addView(strong("สำรองและกู้คืน",20));
         backup.addView(text("เก็บโน้ต ไฟล์แนบ บุ๊กมาร์ก และบันทึก PDF เป็นไฟล์เดียว ควรสำรองก่อนเปลี่ยนเครื่องหรือถอนแอป",14,MUTED));gap(backup,8);
         backup.addView(button("สำรองข้อมูลทั้งหมด",() -> {
@@ -394,7 +487,11 @@ public class MainActivity extends Activity {
         long attach=pendingAttach;if(request==PICK) pendingAttach=-1;
         if(result!=RESULT_OK||data==null||data.getData()==null) return;
         Uri uri=data.getData();
-        if(request==PICK) runIo("กำลังเก็บไฟล์…",() -> {
+        if(request==FONT) runIo("กำลังนำเข้าฟอนต์…",()->{
+            String name="font.ttf";try(android.database.Cursor cursor=getContentResolver().query(uri,new String[]{OpenableColumns.DISPLAY_NAME},null,null,null)) {if(cursor!=null&&cursor.moveToFirst()) name=cursor.getString(0);}
+            try(InputStream input=getContentResolver().openInputStream(uri)) {if(input==null) throw new IOException();Fonts.importFont(this,store,input,name);}return "นำเข้าฟอนต์แล้ว เลือกใช้ได้ในข้อความหรือฟอนต์เริ่มต้น";
+        },this::manageFonts);
+        else if(request==PICK) runIo("กำลังเก็บไฟล์…",() -> {
             String name="เอกสาร",mime=getContentResolver().getType(uri);
             try(android.database.Cursor c=getContentResolver().query(uri,new String[]{OpenableColumns.DISPLAY_NAME},null,null,null)) {if(c!=null&&c.moveToFirst()&&!c.isNull(0)) name=c.getString(0);}
             if(mime==null) mime=name.toLowerCase(Locale.ROOT).endsWith(".pdf")?"application/pdf":"application/octet-stream";
@@ -447,13 +544,13 @@ public class MainActivity extends Activity {
     @Override protected void onSaveInstanceState(Bundle state) {
         saveNote(false);state.putString("tab",tab);state.putString("filter",filter);state.putString("query",query);state.putBoolean("editor",editor);state.putLong("noteId",noteId);
         state.putLong("pendingAttach",pendingAttach);state.putString("exportId",exportId);state.putString("annotatedExportId",annotatedExportId);
-        if(pdf!=null) {state.putString("pdfId",pdfId);state.putString("pdfName",pdfName);state.putInt("page",pageIndex);state.putLong("pdfReturnNote",pdfReturnNote);}
+        if(pdf!=null) {state.putBoolean("fullscreen",fullscreen);state.putInt("pdfMode",pageView.getMode());if(textDraft!=null) state.putString("textDraft",TextBox.encode(java.util.Collections.singletonList(textDraft.get())));state.putString("pdfId",pdfId);state.putString("pdfName",pdfName);state.putInt("page",pageIndex);state.putLong("pdfReturnNote",pdfReturnNote);}
         super.onSaveInstanceState(state);
     }
     @Override public void onBackPressed() {
         if(busy) return;
-        if(pdf!=null) returnFromPdf();else if(editor) {if(saveNote(false)) {keyboardOff();home();}}
+        if(paletteWindow!=null&&paletteWindow.isShowing()) paletteWindow.dismiss();else if(pdf!=null&&fullscreen) setFullscreen(false);else if(pdf!=null) returnFromPdf();else if(editor) {if(saveNote(false)) {keyboardOff();home();}}
         else if(!tab.equals("notes")||!filter.equals("all")) {tab="notes";filter="all";query="";home();}else super.onBackPressed();
     }
-    @Override protected void onDestroy() {handler.removeCallbacks(autosave);closePdf();if(progress!=null) {progress.dismiss();progress=null;}if(!busy) store.close();super.onDestroy();}
+    @Override protected void onDestroy() {if(activeTextDialog!=null) activeTextDialog.dismiss();handler.removeCallbacks(autosave);closePdf();if(progress!=null) {progress.dismiss();progress=null;}if(!busy) store.close();super.onDestroy();}
 }

@@ -8,7 +8,7 @@ import java.util.*;
 /** Additive, transactional schema migration; never drops user data. */
 public final class Store extends SQLiteOpenHelper {
     public Store(Context context) { this(context, "notepocket.db"); }
-    Store(Context context, String name) { super(context,name,null,3); }
+    Store(Context context, String name) { super(context,name,null,4); }
     @Override public void onCreate(SQLiteDatabase db) { migrate(db); }
     @Override public void onUpgrade(SQLiteDatabase db,int oldVersion,int newVersion) { migrate(db); }
     private void migrate(SQLiteDatabase db) {
@@ -22,6 +22,8 @@ public final class Store extends SQLiteOpenHelper {
         db.execSQL("CREATE TABLE IF NOT EXISTS page_notes (doc_id TEXT NOT NULL, page INTEGER NOT NULL, body TEXT NOT NULL DEFAULT '', bookmarked INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(doc_id,page))");
         db.execSQL("CREATE TABLE IF NOT EXISTS reading (doc_id TEXT PRIMARY KEY, page INTEGER NOT NULL DEFAULT 0)");
         db.execSQL("CREATE TABLE IF NOT EXISTS page_ink (doc_id TEXT NOT NULL, page INTEGER NOT NULL, drawing TEXT NOT NULL DEFAULT '[]', PRIMARY KEY(doc_id,page))");
+        db.execSQL("CREATE TABLE IF NOT EXISTS page_text (doc_id TEXT NOT NULL, page INTEGER NOT NULL, boxes TEXT NOT NULL DEFAULT '[]', PRIMARY KEY(doc_id,page))");
+        db.execSQL("CREATE TABLE IF NOT EXISTS fonts (id TEXT PRIMARY KEY, name TEXT NOT NULL, size INTEGER NOT NULL)");
         db.execSQL("CREATE INDEX IF NOT EXISTS notes_order ON notes(deleted,pinned,updated)");
     }
     private void addColumn(SQLiteDatabase db,String table,String name,String type) {
@@ -75,7 +77,7 @@ public final class Store extends SQLiteOpenHelper {
         SQLiteDatabase db=getWritableDatabase();db.beginTransaction();
         try {
             db.delete("note_docs","doc_id=?",new String[]{id});db.delete("page_notes","doc_id=?",new String[]{id});
-            db.delete("page_ink","doc_id=?",new String[]{id});db.delete("reading","doc_id=?",new String[]{id});db.delete("docs","id=?",new String[]{id});db.setTransactionSuccessful();
+            db.delete("page_text","doc_id=?",new String[]{id});db.delete("page_ink","doc_id=?",new String[]{id});db.delete("reading","doc_id=?",new String[]{id});db.delete("docs","id=?",new String[]{id});db.setTransactionSuccessful();
         } finally { db.endTransaction(); }
     }
     public ContentValues page(String doc,int page) {
@@ -95,5 +97,7 @@ public final class Store extends SQLiteOpenHelper {
         ContentValues v=new ContentValues();v.put("doc_id",doc);v.put("page",page);v.put("drawing",validated);
         if(getWritableDatabase().insertWithOnConflict("page_ink",null,v,SQLiteDatabase.CONFLICT_REPLACE)<0) throw new IllegalStateException("Drawing could not be saved");
     }
+    public String textBoxes(String doc,int page) {List<ContentValues> rows=query("SELECT boxes FROM page_text WHERE doc_id=? AND page=?",doc,""+page);return rows.isEmpty()?"[]":rows.get(0).getAsString("boxes");}
+    public void saveText(String doc,int page,String boxes) {ContentValues v=new ContentValues();v.put("doc_id",doc);v.put("page",page);v.put("boxes",TextBox.encode(TextBox.decode(boxes)));if(getWritableDatabase().insertWithOnConflict("page_text",null,v,SQLiteDatabase.CONFLICT_REPLACE)<0) throw new IllegalStateException("Text could not be saved");}
     public static String like(String q) { return "%"+q.replace("\\","\\\\").replace("%","\\%").replace("_","\\_")+"%"; }
 }

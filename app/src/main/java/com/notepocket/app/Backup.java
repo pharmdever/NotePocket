@@ -12,10 +12,10 @@ import java.util.zip.*;
 public final class Backup {
     private static final long LIMIT=1024L*1024*1024;
     private static final int MANIFEST_LIMIT=32*1024*1024;
-    private static final String[] TABLES={"notes","docs","note_docs","page_notes","reading","page_ink"};
+    private static final String[] TABLES={"notes","docs","note_docs","page_notes","reading","page_ink","page_text","fonts"};
     private Backup() {}
     public static void write(Context context,Store store,OutputStream stream) throws Exception {
-        JSONObject manifest=new JSONObject();manifest.put("format","NotePocket");manifest.put("version",3);
+        JSONObject manifest=new JSONObject();manifest.put("format","NotePocket");manifest.put("version",4);
         SQLiteDatabase db=store.getWritableDatabase();db.beginTransaction();
         try(ZipOutputStream zip=new ZipOutputStream(stream)) {
             for(String table:TABLES) {
@@ -31,11 +31,11 @@ public final class Backup {
             byte[] json=manifest.toString().getBytes(StandardCharsets.UTF_8);
             if(json.length>MANIFEST_LIMIT) throw new IOException("Backup metadata too large");
             zip.putNextEntry(new ZipEntry("manifest.json"));zip.write(json);zip.closeEntry();long total=json.length;
-            for(ContentValues doc:store.query("SELECT * FROM docs")) {
+            for(String table:new String[]{"docs","fonts"}) for(ContentValues doc:store.query("SELECT * FROM "+table)) {
                 String id=doc.getAsString("id");validId(id);
                 File file=new File(context.getFilesDir(),id);
                 if(!file.isFile()) throw new IOException("Document missing");
-                zip.putNextEntry(new ZipEntry("docs/"+id));
+                zip.putNextEntry(new ZipEntry(table+"/"+id));
                 try(InputStream in=new FileInputStream(file)) { total+=copy(in,zip,LIMIT-total); }
                 zip.closeEntry();
             }
@@ -56,18 +56,19 @@ public final class Backup {
                     if(name.equals("manifest.json")) {
                         ByteArrayOutputStream bytes=new ByteArrayOutputStream();total+=copy(zip,bytes,MANIFEST_LIMIT);
                         manifest=new JSONObject(bytes.toString("UTF-8"));
-                    } else if(name.startsWith("docs/")) {
-                        String id=name.substring(5);validId(id);
-                        try(OutputStream out=new FileOutputStream(new File(stage,id))) { total+=copy(zip,out,LIMIT-total); }
+                    } else if(name.startsWith("docs/")||name.startsWith("fonts/")) {
+                        String[] path=name.split("/",-1);if(path.length!=2) throw new IOException("Invalid archive path");String id=path[1];validId(id);
+                        try(OutputStream out=new FileOutputStream(new File(stage,path[0]+"-"+id))) { total+=copy(zip,out,LIMIT-total); }
                     } else throw new IOException("Unexpected archive entry");
                     if(total>LIMIT) throw new IOException("Archive too large");zip.closeEntry();
                 }
             }
-            if(manifest==null||!manifest.optString("format").equals("NotePocket")||(manifest.optInt("version")!=2&&manifest.optInt("version")!=3)) throw new IOException("Unsupported backup");
+            if(manifest==null||!manifest.optString("format").equals("NotePocket")||(manifest.optInt("version")!=2&&manifest.optInt("version")!=3&&manifest.optInt("version")!=4)) throw new IOException("Unsupported backup");
             for(String table:TABLES) if(rows(manifest,table).length()>10000) throw new IOException("Too many records");
+            if(rows(manifest,"fonts").length()+store.query("SELECT id FROM fonts").size()>30) throw new IOException("Font library full");
             SQLiteDatabase db=store.getWritableDatabase();db.beginTransaction();
             try {
-                Map<Long,Long> notes=new HashMap<>();Map<String,String> docs=new HashMap<>();
+                Map<Long,Long> notes=new HashMap<>();Map<String,String> docs=new HashMap<>();Map<String,String> fonts=new HashMap<>();
                 JSONArray input=manifest.getJSONArray("notes");
                 for(int i=0;i<input.length();i++) {
                     JSONObject row=input.getJSONObject(i);long old=row.getLong("id");
@@ -81,10 +82,17 @@ public final class Backup {
                 for(int i=0;i<input.length();i++) {
                     JSONObject row=input.getJSONObject(i);String old=row.getString("id");validId(old);
                     if(docs.containsKey(old)) throw new IOException("Duplicate document");
-                    File source=new File(stage,old);if(!source.isFile()||source.length()!=row.getLong("size")) throw new IOException("Document incomplete");
+                    File source=new File(stage,"docs-"+old);if(!source.isFile()||source.length()!=row.getLong("size")) throw new IOException("Document incomplete");
                     String id=UUID.randomUUID().toString();File dest=new File(context.getFilesDir(),id);created.add(dest);
                     try(InputStream in=new FileInputStream(source);OutputStream out=new FileOutputStream(dest)) { copy(in,out,LIMIT); }
                     ContentValues v=new ContentValues();v.put("id",id);v.put("name",row.getString("name"));v.put("mime",row.getString("mime"));v.put("size",dest.length());db.insertOrThrow("docs",null,v);docs.put(old,id);
+                }
+                input=rows(manifest,"fonts");
+                for(int i=0;i<input.length();i++) {
+                    JSONObject row=input.getJSONObject(i);String old=row.getString("id");validId(old);if(fonts.containsKey(old)) throw new IOException("Duplicate font");
+                    File source=new File(stage,"fonts-"+old);if(!source.isFile()||source.length()!=row.getLong("size")||source.length()>20L*1024*1024) throw new IOException("Invalid font");
+                    String id="font-"+UUID.randomUUID();File dest=new File(context.getFilesDir(),id);created.add(dest);try(InputStream in=new FileInputStream(source);OutputStream out=new FileOutputStream(dest)) {copy(in,out,20L*1024*1024);}
+                    android.graphics.Typeface.createFromFile(dest);ContentValues v=new ContentValues();v.put("id",id);v.put("name",row.getString("name"));v.put("size",dest.length());db.insertOrThrow("fonts",null,v);fonts.put(old,id);
                 }
                 input=manifest.getJSONArray("note_docs");
                 for(int i=0;i<input.length();i++) {
@@ -92,7 +100,7 @@ public final class Backup {
                     if(note==null||doc==null) throw new IOException("Broken attachment");
                     ContentValues v=new ContentValues();v.put("note_id",note);v.put("doc_id",doc);db.insertOrThrow("note_docs",null,v);
                 }
-                for(String table:new String[]{"page_notes","reading","page_ink"}) {
+                for(String table:new String[]{"page_notes","reading","page_ink","page_text"}) {
                     input=rows(manifest,table);
                     for(int i=0;i<input.length();i++) {
                         JSONObject row=input.getJSONObject(i);String doc=docs.get(row.getString("doc_id"));int page=row.getInt("page");
@@ -100,6 +108,11 @@ public final class Backup {
                         ContentValues v=new ContentValues();v.put("doc_id",doc);v.put("page",page);
                         if(table.equals("page_notes")) {v.put("body",row.getString("body"));v.put("bookmarked",row.getInt("bookmarked")==0?0:1);}
                         if(table.equals("page_ink")) v.put("drawing",Ink.encode(Ink.decode(row.getString("drawing"))));
+                        if(table.equals("page_text")) {
+                            List<TextBox> boxes=TextBox.decode(row.getString("boxes"));List<TextBox> mapped=new ArrayList<>();
+                            for(TextBox box:boxes) {String font=box.font;if(!Arrays.asList("sans","serif","mono").contains(font)) {font=fonts.get(font);if(font==null) throw new IOException("Text font missing");}mapped.add(new TextBox(box.id,box.text,font,box.x,box.y,box.width,box.size,box.color));}
+                            v.put("boxes",TextBox.encode(mapped));
+                        }
                         db.insertOrThrow(table,null,v);
                     }
                 }
@@ -108,7 +121,7 @@ public final class Backup {
         } finally { for(File file:created) file.delete();deleteTree(stage); }
     }
     private static JSONArray rows(JSONObject manifest,String table) throws JSONException {
-        if(table.equals("page_ink")&&manifest.getInt("version")==2&&!manifest.has(table)) return new JSONArray();
+        if(!manifest.has(table)&&((table.equals("page_ink")&&manifest.getInt("version")==2)||((table.equals("page_text")||table.equals("fonts"))&&manifest.getInt("version")<4))) return new JSONArray();
         return manifest.getJSONArray(table);
     }
     private static void validId(String id) throws IOException { if(id==null||!id.matches("[A-Za-z0-9-]{1,80}")) throw new IOException("Invalid document ID"); }

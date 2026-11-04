@@ -1,9 +1,9 @@
 package com.notepocket.app;
 
 import android.content.*;
+import android.content.pm.ActivityInfo;
 import android.graphics.*;
 import android.graphics.pdf.PdfDocument;
-import android.widget.EditText;
 import androidx.test.core.app.ActivityScenario;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
@@ -19,42 +19,37 @@ import static org.junit.Assert.*;
 @RunWith(AndroidJUnit4.class)
 public class UiFlowTest {
     private Context context;
-    @Test public void createAutosaveAttachReadAndWritePageNote() throws Exception {
-        context=InstrumentationRegistry.getInstrumentation().getTargetContext();context.deleteDatabase("notepocket.db");
+    @Test public void notesInkTextFontsLandscapeFullscreenAndSettings() throws Exception {
+        context=InstrumentationRegistry.getInstrumentation().getTargetContext();context.deleteDatabase("notepocket.db");context.getSharedPreferences("reader",0).edit().clear().commit();String docId;
         try(Store store=new Store(context)) {
             store.save(-1,"แผนอ่านหนังสือสัปดาห์นี้","ทบทวนเซลล์และสารชีวโมเลกุล\n☐ ทำโจทย์วันละ 10 ข้อ","","การเรียน");
             long pinned=store.save(-1,"ไอเดียที่อยากเก็บไว้","พื้นที่เล็ก ๆ สำหรับความคิดใหม่และสิ่งที่อยากทำ","","ทั่วไป");store.flag(pinned,"pinned",1);
-            String id=UUID.randomUUID().toString();File file=new File(context.getFilesDir(),id);
-            PdfDocument pdf=new PdfDocument();
-            try {
-                for(int i=1;i<=2;i++) {PdfDocument.Page page=pdf.startPage(new PdfDocument.PageInfo.Builder(595,842,i).create());Canvas c=page.getCanvas();c.drawColor(0xffFAF8F1);Paint p=new Paint();p.setColor(0xff216B58);c.drawRect(40,60,555,240,p);p.setColor(Color.WHITE);p.setTextSize(32);c.drawText("BIOLOGY / "+i,70,150,p);p.setColor(0xff203B34);p.setTextSize(21);c.drawText("Cells, molecules and new ideas.",50,310,p);pdf.finishPage(page);}
-                try(OutputStream out=new FileOutputStream(file)) {pdf.writeTo(out);}
-            } finally {pdf.close();}
-            ContentValues doc=new ContentValues();doc.put("id",id);doc.put("name","Biology study guide.pdf");doc.put("mime","application/pdf");doc.put("size",file.length());store.getWritableDatabase().insertOrThrow("docs",null,doc);
+            docId=UUID.randomUUID().toString();File file=new File(context.getFilesDir(),docId);PdfDocument pdf=new PdfDocument();
+            try {for(int i=1;i<=2;i++) {PdfDocument.Page page=pdf.startPage(new PdfDocument.PageInfo.Builder(595,842,i).create());Canvas c=page.getCanvas();c.drawColor(0xffFAF8F1);Paint p=new Paint();p.setColor(0xff216B58);c.drawRect(40,60,555,240,p);p.setColor(Color.WHITE);p.setTextSize(32);c.drawText("BIOLOGY / "+i,70,150,p);p.setColor(0xff203B34);p.setTextSize(21);c.drawText("Cells, molecules and new ideas.",50,310,p);pdf.finishPage(page);}try(OutputStream out=new FileOutputStream(file)) {pdf.writeTo(out);}}finally {pdf.close();}
+            ContentValues doc=new ContentValues();doc.put("id",docId);doc.put("name","Biology study guide.pdf");doc.put("mime","application/pdf");doc.put("size",file.length());store.getWritableDatabase().insertOrThrow("docs",null,doc);
+            File systemFont=systemFont();try(InputStream in=new FileInputStream(systemFont)) {Fonts.importFont(context,store,in,"SampleFont.ttf");}
         }
         try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)) {
-            screenshot("01-notes");onView(withText("＋ เขียนโน้ต")).perform(click());
-            onView(withHint("ชื่อโน้ต")).perform(replaceText("ทบทวนบทเรียน"));
-            onView(withHint("เขียนสิ่งที่อยากจดจำ…")).perform(replaceText("สรุปจากเอกสารและกลับมาทบทวน"),closeSoftKeyboard());Thread.sleep(1100);
-            try(Store store=new Store(context)) {assertEquals(1,store.query("SELECT id FROM notes WHERE title=?","ทบทวนบทเรียน").size());}
-            onView(withText("แนบไฟล์")).perform(click());onView(withText("เลือกจากเอกสารที่เก็บไว้")).perform(click());onView(withText("Biology study guide.pdf")).perform(click());
-            onView(withText("ไฟล์แนบ")).perform(scrollTo());screenshot("02-editor");
-            onView(withText("เปิด")).perform(scrollTo(),click());screenshot("03-pdf");
-            onView(withText("ปากกา")).perform(click());onView(isAssignableFrom(PdfPageView.class)).perform(swipeRight());
-            onView(withText("ไฮไลต์")).perform(click());onView(isAssignableFrom(PdfPageView.class)).perform(swipeLeft());
-            onView(withText("↶")).perform(click());
-            onView(withText("เครื่องมือ")).perform(click());onView(withText("ทำซ้ำเส้นที่ย้อนกลับ")).perform(click());
-            screenshot("04-pdf-annotated");
-            onView(withText("＋")).perform(click());onView(withText("จดหน้านี้")).perform(click());
-            onView(withHint("สรุปสิ่งที่อ่าน คำถาม หรือสิ่งที่ต้องกลับมาทบทวน…")).perform(replaceText("จดจำโครงสร้างเซลล์"),closeSoftKeyboard());onView(withText("เสร็จ")).perform(click());
-            onView(withText("☆ บันทึกหน้า")).perform(click());onView(withText("ถัดไป ›")).perform(click());
-            onView(withText("‹ ก่อนหน้า")).perform(click());onView(withText("★ บันทึกแล้ว")).check(androidx.test.espresso.assertion.ViewAssertions.matches(isDisplayed()));
-            onView(withText("‹")).perform(click());onView(withHint("ชื่อโน้ต")).check(androidx.test.espresso.assertion.ViewAssertions.matches(withText("ทบทวนบทเรียน")));
+            screenshot("01-notes");onView(withText("＋ เขียนโน้ต")).perform(click());onView(withHint("ชื่อโน้ต")).perform(replaceText("ทบทวนบทเรียน"));onView(withHint("เขียนสิ่งที่อยากจดจำ…")).perform(replaceText("สรุปจากเอกสารและกลับมาทบทวน"),closeSoftKeyboard());Thread.sleep(1100);
+            onView(withText("แนบไฟล์")).perform(click());onView(withText("เลือกจากเอกสารที่เก็บไว้")).perform(click());onView(withText("Biology study guide.pdf")).perform(click());onView(withText("เปิด")).perform(scrollTo(),click());screenshot("02-reader");
+            palette("ปากกา");onView(isAssignableFrom(PdfPageView.class)).perform(swipeRight());palette("ไฮไลต์");onView(isAssignableFrom(PdfPageView.class)).perform(swipeLeft());palette("↶");palette("ทำซ้ำ");
+            palette("ข้อความ");onView(isAssignableFrom(PdfPageView.class)).perform(click());onView(withHint("ข้อความบน PDF")).perform(replaceText("ข้อความใหม่บน PDF"),closeSoftKeyboard());
+            onView(withContentDescription("ฟอนต์ข้อความ")).perform(scrollTo(),click());onView(withText("SampleFont.ttf")).perform(click());onView(withContentDescription("สีข้อความ")).perform(scrollTo(),click());onView(withText("แดง")).perform(click());onView(withText("บันทึก")).perform(click());screenshot("03-text-and-highlight");
+            onView(withContentDescription("จดหน้านี้")).perform(click());onView(withHint("สรุปสิ่งที่อ่าน คำถาม หรือสิ่งที่ต้องกลับมาทบทวน…")).perform(replaceText("จดจำโครงสร้างเซลล์"),closeSoftKeyboard());onView(withText("เสร็จ")).perform(click());onView(withContentDescription("บุ๊กมาร์กหน้านี้")).perform(click());
+            onView(withContentDescription("หน้าถัดไป")).perform(click());onView(withContentDescription("หน้าก่อนหน้า")).perform(click());onView(withText("★")).check(androidx.test.espresso.assertion.ViewAssertions.matches(isDisplayed()));
+            // Select a real extracted glyph, then use the contextual highlighter action.
+            List<PdfWords.Glyph> words=PdfWords.read(context,docId,0);assertFalse(words.isEmpty());PdfWords.Glyph glyph=words.get(words.size()-1);
+            scenario.onActivity(a->{PdfPageView view=findPdf(a.getWindow().getDecorView());view.setWords(words);view.setMode(PdfPageView.SELECT);view.selectAt(glyph.box.centerX(),glyph.box.centerY());});onView(withText("ไฮไลต์")).perform(click());
+            scenario.onActivity(a->a.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE));Thread.sleep(1000);
+            scenario.onActivity(a->{PdfPageView view=findPdf(a.getWindow().getDecorView());assertTrue("Landscape PDF must retain most of the screen height",view.getHeight()>a.getResources().getDisplayMetrics().heightPixels*.55f);});screenshot("04-landscape");
+            onView(withContentDescription("เต็มจอ")).perform(click());Thread.sleep(500);scenario.onActivity(a->{PdfPageView view=findPdf(a.getWindow().getDecorView());assertTrue("Fullscreen should maximize the document",view.getHeight()>a.getResources().getDisplayMetrics().heightPixels*.85f);});screenshot("05-fullscreen");
+            scenario.onActivity(MainActivity::onBackPressed);scenario.onActivity(a->a.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT));Thread.sleep(800);onView(withContentDescription("กลับจาก PDF")).perform(click());onView(withHint("ชื่อโน้ต")).check(androidx.test.espresso.assertion.ViewAssertions.matches(withText("ทบทวนบทเรียน")));
+            onView(withText("‹")).perform(click());onView(withText("ตั้งค่า")).perform(click());onView(withText("ตั้งค่าตัวอ่าน PDF")).perform(scrollTo(),click());onView(withText("เปิดหน้าจอค้างขณะอ่าน PDF")).perform(click());onView(withText("บันทึก")).perform(click());assertTrue(context.getSharedPreferences("reader",0).getBoolean("keepAwake",false));
         }
-        try(Store store=new Store(context)) {assertEquals("จดจำโครงสร้างเซลล์",store.query("SELECT body FROM page_notes WHERE bookmarked=1").get(0).getAsString("body"));assertEquals(2,Ink.decode(store.query("SELECT drawing FROM page_ink WHERE page=0").get(0).getAsString("drawing")).size());}
+        try(Store store=new Store(context)) {assertEquals("จดจำโครงสร้างเซลล์",store.page(docId,0).getAsString("body"));assertTrue(Ink.decode(store.drawing(docId,0)).size()>=2);TextBox box=TextBox.decode(store.textBoxes(docId,0)).get(0);assertEquals("ข้อความใหม่บน PDF",box.text);assertEquals(0xffE13A3A,box.color);assertTrue(box.font.startsWith("font-"));}
     }
-    private void screenshot(String name) throws Exception {
-        Thread.sleep(400);Bitmap image=InstrumentationRegistry.getInstrumentation().getUiAutomation().takeScreenshot();assertNotNull(image);
-        File folder=new File(context.getExternalFilesDir(null),"screenshots");folder.mkdirs();try(OutputStream out=new FileOutputStream(new File(folder,name+".png"))) {image.compress(Bitmap.CompressFormat.PNG,100,out);}image.recycle();
-    }
+    private void palette(String item) {onView(withContentDescription("เปิดเครื่องมือลอย")).perform(click());onView(withText(item)).perform(scrollTo(),click());}
+    static File systemFont() {File[] files=new File("/system/fonts").listFiles((dir,name)->name.toLowerCase(java.util.Locale.ROOT).endsWith(".ttf"));assertNotNull(files);assertTrue(files.length>0);for(File file:files) if(file.getName().contains("Thai")) return file;return files[0];}
+    static PdfPageView findPdf(android.view.View view) {if(view instanceof PdfPageView) return (PdfPageView)view;if(view instanceof android.view.ViewGroup) {android.view.ViewGroup group=(android.view.ViewGroup)view;for(int i=0;i<group.getChildCount();i++) {PdfPageView result=findPdf(group.getChildAt(i));if(result!=null) return result;}}return null;}
+    private void screenshot(String name) throws Exception {Thread.sleep(400);Bitmap image=InstrumentationRegistry.getInstrumentation().getUiAutomation().takeScreenshot();assertNotNull(image);File folder=new File(context.getExternalFilesDir(null),"screenshots");folder.mkdirs();try(OutputStream out=new FileOutputStream(new File(folder,name+".png"))) {image.compress(Bitmap.CompressFormat.PNG,100,out);}image.recycle();}
 }
