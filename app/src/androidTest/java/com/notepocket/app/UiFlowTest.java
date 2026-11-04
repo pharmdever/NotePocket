@@ -40,13 +40,18 @@ public class UiFlowTest {
             onView(withText("แนบไฟล์")).perform(click());onView(withText("เลือกจากเอกสารที่เก็บไว้")).perform(click());onView(withText("Biology study guide.pdf")).perform(click());
             onView(withText("ไฟล์แนบ")).perform(scrollTo());screenshot("02-editor");
             onView(withText("เปิด")).perform(scrollTo(),click());screenshot("03-pdf");
+            onView(withText("ปากกา")).perform(click());onView(isAssignableFrom(PdfPageView.class)).perform(swipeRight());
+            onView(withText("ไฮไลต์")).perform(click());onView(isAssignableFrom(PdfPageView.class)).perform(swipeLeft());
+            onView(withText("↶")).perform(click());
+            onView(withText("เครื่องมือ")).perform(click());onView(withText("ทำซ้ำเส้นที่ย้อนกลับ")).perform(click());
+            screenshot("04-pdf-annotated");
             onView(withText("＋")).perform(click());onView(withText("จดหน้านี้")).perform(click());
             onView(withHint("สรุปสิ่งที่อ่าน คำถาม หรือสิ่งที่ต้องกลับมาทบทวน…")).perform(replaceText("จดจำโครงสร้างเซลล์"),closeSoftKeyboard());onView(withText("เสร็จ")).perform(click());
             onView(withText("☆ บันทึกหน้า")).perform(click());onView(withText("ถัดไป ›")).perform(click());
             onView(withText("‹ ก่อนหน้า")).perform(click());onView(withText("★ บันทึกแล้ว")).check(androidx.test.espresso.assertion.ViewAssertions.matches(isDisplayed()));
             onView(withText("‹")).perform(click());onView(withHint("ชื่อโน้ต")).check(androidx.test.espresso.assertion.ViewAssertions.matches(withText("ทบทวนบทเรียน")));
         }
-        try(Store store=new Store(context)) {assertEquals("จดจำโครงสร้างเซลล์",store.query("SELECT body FROM page_notes WHERE bookmarked=1").get(0).getAsString("body"));}
+        try(Store store=new Store(context)) {assertEquals("จดจำโครงสร้างเซลล์",store.query("SELECT body FROM page_notes WHERE bookmarked=1").get(0).getAsString("body"));assertEquals(2,Ink.decode(store.query("SELECT drawing FROM page_ink WHERE page=0").get(0).getAsString("drawing")).size());}
     }
     private void screenshot(String name) throws Exception {
         Thread.sleep(400);Bitmap image=InstrumentationRegistry.getInstrumentation().getUiAutomation().takeScreenshot();assertNotNull(image);

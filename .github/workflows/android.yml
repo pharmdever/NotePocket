@@ -5,6 +5,7 @@ on:
     branches: [main]
 permissions:
   contents: read
+  actions: read
 concurrency:
   group: android-${{ github.ref }}
   cancel-in-progress: true
@@ -31,6 +32,20 @@ jobs:
           gradle-version: '8.9'
       - name: Compile and lint
         run: gradle assembleDebug assembleDebugAndroidTest lintDebug
+      - name: Configure persistent release key
+        if: env.ANDROID_SIGNING_BUNDLE != ''
+        run: python3 tools/restore_signing.py
+      - name: Build signed release and release upgrade tests
+        if: env.ANDROID_SIGNING_BUNDLE != ''
+        run: gradle assembleRelease assembleReleaseAndroidTest lintRelease -PtestRelease=true
+      - name: Download previous signed release for upgrade verification
+        if: env.ANDROID_SIGNING_BUNDLE != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          curl --fail --location --silent --show-error -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" https://api.github.com/repos/pharmdever/NotePocket/actions/artifacts/13346478598/zip -o "${RUNNER_TEMP}/previous-release.zip"
+          mkdir -p previous-release
+          unzip -q "${RUNNER_TEMP}/previous-release.zip" -d previous-release
       - name: Enable emulator acceleration
         run: sudo chmod 666 /dev/kvm
       - name: Device tests and update preservation
@@ -43,19 +58,13 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: bash tools/device_tests.sh
-      - name: Configure persistent release key
-        if: env.ANDROID_SIGNING_BUNDLE != ''
-        run: python3 tools/restore_signing.py
-      - name: Build signed release
-        if: env.ANDROID_SIGNING_BUNDLE != ''
-        run: gradle assembleRelease lintRelease
       - name: Release signing status
         if: env.ANDROID_SIGNING_BUNDLE == ''
         run: echo 'Release APK is pending. Add ANDROID_SIGNING_BUNDLE in repository Actions secrets and run this workflow again. The debug build is for QA only.' >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         if: success() && env.ANDROID_SIGNING_BUNDLE != ''
         with:
-          name: NotePocket-0.2.0-install
+          name: NotePocket-0.3.0-install
           path: app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
       - uses: actions/upload-artifact@v4

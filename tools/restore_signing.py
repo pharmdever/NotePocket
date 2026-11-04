@@ -7,7 +7,7 @@ from pathlib import Path
 import re
 import subprocess
 
-bundle = json.loads(base64.b64decode(os.environ['ANDROID_SIGNING_BUNDLE'], validate=True))
+bundle = json.loads(base64.b64decode(''.join(os.environ['ANDROID_SIGNING_BUNDLE'].split()), validate=True))
 password = bundle['password']
 if not re.fullmatch(r'[0-9a-f]{64}', password) or bundle['alias'] != 'notepocket':
     raise ValueError('Unexpected signing bundle format')

@@ -6,11 +6,12 @@ android {
         applicationId 'com.notepocket.notes'
         minSdk 26
         targetSdk 35
-        versionCode = (project.findProperty('notePocketVersionCode') ?: '2').toInteger()
-        versionName '0.2.0'
+        versionCode = (project.findProperty('notePocketVersionCode') ?: '3').toInteger()
+        versionName '0.3.0'
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
         manifestPlaceholders = [appLabel: 'NotePocket']
     }
+    testBuildType = project.hasProperty('testRelease') ? 'release' : 'debug'
     buildFeatures { buildConfig true }
     signingConfigs {
         release {
@@ -32,6 +33,7 @@ android {
             minifyEnabled false
         }
     }
+    packaging { resources.excludes += ['META-INF/DEPENDENCIES'] }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
 }
 // Never distribute a release silently signed with a disposable debug key.
@@ -39,6 +41,7 @@ if (gradle.startParameter.taskNames.any { it.toLowerCase().contains('release') }
     throw new GradleException('Release signing is not configured. Add ANDROID_SIGNING_BUNDLE to GitHub Actions secrets.')
 }
 dependencies {
+    implementation 'com.tom-roush:pdfbox-android:2.0.27.0'
     androidTestImplementation 'androidx.test:runner:1.6.2'
     androidTestImplementation 'androidx.test.ext:junit:1.2.1'
     androidTestImplementation 'androidx.test:core:1.6.1'
