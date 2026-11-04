@@ -28,7 +28,7 @@ public final class AnnotatedPdf {
                     for(Ink stroke:strokes) {
                         stream.saveGraphicsState();
                         PDExtendedGraphicsState state=new PDExtendedGraphicsState();state.setStrokingAlphaConstant(stroke.highlight?1f/3:1f);
-                        state.setBlendMode(stroke.highlight?BlendMode.MULTIPLY:BlendMode.NORMAL);stream.setGraphicsStateParameters(state);
+                        state.setBlendMode(BlendMode.NORMAL);stream.setGraphicsStateParameters(state);
                         int color=stroke.color;stream.setStrokingColor(((color>>16)&255)/255f,((color>>8)&255)/255f,(color&255)/255f);
                         PDRectangle crop=page.getCropBox();stream.setLineWidth(stroke.width*Math.min(crop.getWidth(),crop.getHeight()));
                         float[] xy=point(page,stroke.points[0],stroke.points[1]);stream.moveTo(xy[0],xy[1]);

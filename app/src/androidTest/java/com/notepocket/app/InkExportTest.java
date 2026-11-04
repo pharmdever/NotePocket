@@ -31,15 +31,16 @@ public class InkExportTest {
                 }
                 pdf.save(source);
             }
+            String originalText;try(PDDocument original=PDDocument.load(source)) {originalText=new PDFTextStripper().getText(original);}
             byte[] before=digest(source);
             for(int page=0;page<4;page++) store.saveDrawing(id,page,Ink.encode(Arrays.asList(new Ink(false,0xffE13A3A,0.012f,new float[]{0.2f,0.25f,0.8f,0.25f}),new Ink(true,0xffFFD54F,0.028f,new float[]{0.2f,0.65f,0.8f,0.65f}))));
             try(OutputStream out=new FileOutputStream(output)) {AnnotatedPdf.write(context,store,id,out);}
             assertArrayEquals(before,digest(source));
-            try(PDDocument pdf=PDDocument.load(output)) {assertEquals(4,pdf.getNumberOfPages());String text=new PDFTextStripper().getText(pdf);assertEquals(4,text.split("Searchable original",-1).length-1);}
+            try(PDDocument pdf=PDDocument.load(output)) {assertEquals(4,pdf.getNumberOfPages());String text=new PDFTextStripper().getText(pdf);assertEquals("All original text and ordering must survive export",originalText,text);}
             try(ParcelFileDescriptor fd=ParcelFileDescriptor.open(output,ParcelFileDescriptor.MODE_READ_ONLY);PdfRenderer pdf=new PdfRenderer(fd)) {
                 for(int i=0;i<4;i++) try(PdfRenderer.Page page=pdf.openPage(i)) {
                     Bitmap bitmap=Bitmap.createBitmap(page.getWidth()*2,page.getHeight()*2,Bitmap.Config.ARGB_8888);bitmap.eraseColor(Color.WHITE);page.render(bitmap,null,null,PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY);
-                    int pixel=bitmap.getPixel(bitmap.getWidth()/2,bitmap.getHeight()/4);assertTrue("Red ink alignment failed at rotation "+i+": "+Integer.toHexString(pixel),Color.red(pixel)>180&&Color.green(pixel)<110&&Color.blue(pixel)<110);bitmap.recycle();
+                    int pixel=bitmap.getPixel(bitmap.getWidth()/2,bitmap.getHeight()/4);assertTrue("Red ink alignment failed at rotation "+i+": "+Integer.toHexString(pixel),Color.red(pixel)>180&&Color.green(pixel)<110&&Color.blue(pixel)<110);int highlighted=bitmap.getPixel(bitmap.getWidth()/2,Math.round(bitmap.getHeight()*0.65f));assertTrue("Highlighter should be translucent at rotation "+i,Color.red(highlighted)>235&&Color.green(highlighted)>200&&Color.blue(highlighted)>100&&Color.blue(highlighted)<230);bitmap.recycle();
                 }
             }
         } finally {source.delete();output.delete();context.deleteDatabase("export-test.db");}

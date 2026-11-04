@@ -91,7 +91,7 @@ public final class PdfPageView extends View {
     }
     private void drawStroke(Canvas canvas,RectF rect,Ink stroke) {
         inkPaint.setColor(stroke.color);inkPaint.setAlpha(stroke.highlight?85:255);inkPaint.setStrokeWidth(stroke.width*Math.min(rect.width(),rect.height()));
-        inkPaint.setXfermode(stroke.highlight?new PorterDuffXfermode(PorterDuff.Mode.MULTIPLY):null);
+        inkPaint.setXfermode(null);
         float[] p=stroke.points;Path path=new Path();path.moveTo(rect.left+p[0]*rect.width(),rect.top+p[1]*rect.height());
         if(p.length==2) canvas.drawPoint(rect.left+p[0]*rect.width(),rect.top+p[1]*rect.height(),inkPaint);
         else {for(int i=2;i<p.length;i+=2) path.lineTo(rect.left+p[i]*rect.width(),rect.top+p[i+1]*rect.height());canvas.drawPath(path,inkPaint);}
