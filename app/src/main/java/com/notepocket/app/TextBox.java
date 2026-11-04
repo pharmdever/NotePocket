@@ -30,7 +30,7 @@ public final class TextBox {
     }
     public StaticLayout layout(Context context,float pageWidth,float pageHeight) {
         TextPaint paint=new TextPaint(Paint.ANTI_ALIAS_FLAG);paint.setColor(color);paint.setTextSize(size*Math.min(pageWidth,pageHeight));paint.setTypeface(Fonts.typeface(context,font));
-        int pixels=Math.max(1,Math.round(Math.min(width,1-x)*pageWidth));return StaticLayout.Builder.obtain(text,0,text.length(),paint,pixels).setIncludePad(false).setBreakStrategy(android.text.Layout.BREAK_STRATEGY_HIGH_QUALITY).build();
+        int pixels=Math.max(1,Math.round(Math.min(width,1-x)*pageWidth));return StaticLayout.Builder.obtain(text,0,text.length(),paint,pixels).setIncludePad(false).build();
     }
     public RectF bounds(Context context,RectF page) {StaticLayout layout=layout(context,page.width(),page.height());return new RectF(page.left+x*page.width(),page.top+y*page.height(),page.left+x*page.width()+layout.getWidth(),page.top+y*page.height()+layout.getHeight());}
     public void draw(Context context,Canvas canvas,RectF page) {StaticLayout layout=layout(context,page.width(),page.height());canvas.save();canvas.translate(page.left+x*page.width(),page.top+y*page.height());layout.draw(canvas);canvas.restore();}
