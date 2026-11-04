@@ -33,7 +33,7 @@ public final class PdfPageView extends View {
         if(selectionStart<0||bitmap==null) return;List<RectF> groups=new ArrayList<>();
         for(int i=Math.min(selectionStart,selectionEnd);i<=Math.max(selectionStart,selectionEnd);i++) {
             RectF box=glyphs.get(i).box;if(groups.isEmpty()) {groups.add(new RectF(box));continue;}RectF last=groups.get(groups.size()-1);
-            if((Math.abs(last.centerY()-box.centerY())<Math.max(last.height(),box.height())*.6f&&box.left-last.right<.04f)||(Math.abs(last.centerX()-box.centerX())<Math.max(last.width(),box.width())*.6f&&box.top-last.bottom<.02f)) last.union(box);else groups.add(new RectF(box));
+            if((Math.abs(last.centerY()-box.centerY())<Math.max(last.height(),box.height())*.6f&&box.left-last.right<.04f)||(last.width()*bitmap.getWidth()<last.height()*bitmap.getHeight()&&box.width()*bitmap.getWidth()<box.height()*bitmap.getHeight()&&Math.abs(last.centerX()-box.centerX())<Math.max(last.width(),box.width())*.6f&&box.top-last.bottom<.02f)) last.union(box);else groups.add(new RectF(box));
         }
         int old=strokes.size();float minimum=Math.min(bitmap.getWidth(),bitmap.getHeight());
         for(RectF box:groups) {

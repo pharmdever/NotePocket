@@ -317,7 +317,7 @@ public class MainActivity extends Activity {
     private void setFullscreen(boolean value) {
         fullscreen=value;if(readerHeader!=null) readerHeader.setVisibility(value?View.GONE:View.VISIBLE);if(readerFooter!=null) readerFooter.setVisibility(value?View.GONE:View.VISIBLE);
         if(android.os.Build.VERSION.SDK_INT>=30) {
-            android.view.WindowInsetsController controller=getWindow().getInsetsController();if(controller!=null) {if(value) {controller.setSystemBarsBehavior(android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);controller.hide(android.view.WindowInsets.Type.systemBars());}else controller.show(android.view.WindowInsets.Type.systemBars());}
+            android.view.WindowInsetsController controller=getWindow().getDecorView().getWindowInsetsController();if(controller!=null) {if(value) {controller.setSystemBarsBehavior(android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);controller.hide(android.view.WindowInsets.Type.systemBars());}else controller.show(android.view.WindowInsets.Type.systemBars());}
         } else getWindow().getDecorView().setSystemUiVisibility(value?View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY|View.SYSTEM_UI_FLAG_FULLSCREEN|View.SYSTEM_UI_FLAG_HIDE_NAVIGATION|View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN|View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION:View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR|View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
         if(root!=null) root.requestApplyInsets();
     }
