@@ -58,6 +58,18 @@ public class StoreBackupTest {
         try {Backup.restore(context,store,new ByteArrayInputStream(broken.toByteArray()));fail("Expected incomplete backup rejection");}catch(IOException expected) {}
         assertEquals(1,store.query("SELECT * FROM notes").size());assertEquals("keep",store.note(note).getAsString("body"));assertEquals(1,store.query("SELECT * FROM docs").size());
     }
+    @Test public void restoresVersionTwoBackupWithoutDrawingTable() throws Exception {
+        long note=store.save(-1,"old backup","keep text","","ทั่วไป");String doc=document();store.attach(note,doc);
+        ByteArrayOutputStream bytes=new ByteArrayOutputStream();Backup.write(context,store,bytes);ByteArrayOutputStream old=new ByteArrayOutputStream();
+        try(ZipInputStream in=new ZipInputStream(new ByteArrayInputStream(bytes.toByteArray()));ZipOutputStream out=new ZipOutputStream(old)) {
+            ZipEntry entry;while((entry=in.getNextEntry())!=null) {
+                out.putNextEntry(new ZipEntry(entry.getName()));ByteArrayOutputStream data=new ByteArrayOutputStream();Backup.copy(in,data,1000000);
+                if(entry.getName().equals("manifest.json")) {org.json.JSONObject manifest=new org.json.JSONObject(data.toString("UTF-8"));manifest.put("version",2);manifest.remove("page_ink");out.write(manifest.toString().getBytes(StandardCharsets.UTF_8));}
+                else out.write(data.toByteArray());out.closeEntry();
+            }
+        }
+        assertEquals(1,Backup.restore(context,store,new ByteArrayInputStream(old.toByteArray())));assertEquals(2,store.query("SELECT id FROM notes").size());assertTrue(store.query("SELECT * FROM page_ink").isEmpty());
+    }
     @Test public void rejectsArchivePathTraversal() throws Exception {
         ByteArrayOutputStream bytes=new ByteArrayOutputStream();
         try(ZipOutputStream out=new ZipOutputStream(bytes)) {out.putNextEntry(new ZipEntry("docs/../../escape"));out.write(1);out.closeEntry();}

@@ -375,6 +375,12 @@ public class MainActivity extends Activity {
         LinearLayout info=card(page);info.addView(strong("NotePocket "+BuildConfig.VERSION_NAME,20));
         info.addView(text("รุ่น "+BuildConfig.VERSION_CODE+" · รองรับ Android 8 ขึ้นไป\nอัปเดตโดยติดตั้ง APK ที่ลงนามด้วยกุญแจเดิมทับได้ ข้อมูลจะยังอยู่",14,MUTED));
         info.addView(button("เปิดหน้าดาวน์โหลดและอัปเดต",() -> startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse("https://github.com/pharmdever/NotePocket/actions"))),false));
+        info.addView(button("ใบอนุญาตซอฟต์แวร์",() -> {
+            try(InputStream input=getAssets().open("THIRD_PARTY_LICENSES.txt");ByteArrayOutputStream bytes=new ByteArrayOutputStream()) {
+                Backup.copy(input,bytes,256*1024);ScrollView scroll=new ScrollView(this);TextView license=text(bytes.toString("UTF-8"),12,INK);license.setPadding(dp(18),dp(12),dp(18),dp(12));scroll.addView(license);
+                new AlertDialog.Builder(this).setTitle("ใบอนุญาตซอฟต์แวร์").setView(scroll).setPositiveButton("ปิด",null).show();
+            } catch(Exception error) {toast("เปิดใบอนุญาตไม่ได้");}
+        },false));
         LinearLayout help=card(page);help.addView(strong("เกี่ยวกับ PDF",18));help.addView(text("จดหน้านี้ ใช้เขียนบันทึกประกอบเอกสาร โดยเก็บแยกจากต้นฉบับ PDF\nเลือกปากกาหรือไฮไลต์เพื่อเขียนบนหน้า แล้วใช้เครื่องมือ → ส่งออก PDF ที่เขียนแล้ว\nยังไม่รองรับการแก้ข้อความเดิมใน PDF\nไฟล์สำรองมีข้อมูลส่วนตัว กรุณาเก็บในที่ปลอดภัย",14,MUTED));
     }
     private void pickDocument(long note) {
