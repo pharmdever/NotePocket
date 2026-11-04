@@ -8,7 +8,10 @@ collect() {
 from pathlib import Path
 import base64
 for image in sorted(Path('qa-output/screenshots').glob('*.png')):
-    print('NOTEPOCKET_SCREENSHOT:' + image.name + ':' + base64.b64encode(image.read_bytes()).decode())
+    encoded=base64.b64encode(image.read_bytes()).decode()
+    chunks=[encoded[i:i+12000] for i in range(0,len(encoded),12000)]
+    for index,chunk in enumerate(chunks):
+        print(f'NOTEPOCKET_SCREENSHOT:{image.name}:{index}:{len(chunks)}:{chunk}')
 PYSCREEN
 }
 trap collect EXIT
@@ -20,7 +23,8 @@ from pathlib import Path
 text=Path('qa-output/device-tests.txt').read_text()
 assert 'OK (' in text and 'FAILURES' not in text and 'INSTRUMENTATION_FAILED' not in text, text
 PY
-# Same package and same signing key: reinstall without uninstalling or clearing app data.
+# Raise the version code while keeping the package and key, then install without clearing data.
+gradle assembleDebug -PnotePocketVersionCode=3
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell am instrument -w -e class com.notepocket.app.UpdatePersistenceTest com.notepocket.notes.debug.test/androidx.test.runner.AndroidJUnitRunner | tee qa-output/update-tests.txt
 python3 - <<'PY'

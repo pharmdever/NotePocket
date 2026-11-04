@@ -6,7 +6,7 @@ android {
         applicationId 'com.notepocket.notes'
         minSdk 26
         targetSdk 35
-        versionCode 2
+        versionCode = (project.findProperty('notePocketVersionCode') ?: '2').toInteger()
         versionName '0.2.0'
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
         manifestPlaceholders = [appLabel: 'NotePocket']

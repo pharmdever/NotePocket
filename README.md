@@ -49,7 +49,7 @@ gradle assembleDebug assembleDebugAndroidTest lintDebug
 
 ยังไม่มี Gradle wrapper ใน repository ใช้ Gradle ที่ติดตั้งแล้วหรือ GitHub Actions
 workflow จะคอมไพล์ ตรวจ Lint ทดสอบ Android emulator API 35 ถ่ายภาพหน้าจอ
-และติดตั้งทับด้วย `adb install -r` แล้วตรวจว่าโน้ต ไฟล์แนบ และบันทึกประกอบยังอยู่
+และสร้าง APK ทดสอบเพิ่มเลขเวอร์ชัน 2 → 3 ติดตั้งทับด้วย `adb install -r` แล้วตรวจว่าโน้ต ไฟล์แนบ และบันทึกประกอบยังอยู่
 ทดสอบการย้ายฐานข้อมูล 0.1 แบบ schema เดิม การกู้คืนที่ล้มเหลว และ ZIP path traversal ด้วย
 
 เมื่อ secret พร้อมและการตรวจทั้งหมดผ่าน จะได้ artifact `NotePocket-0.2.0-install`

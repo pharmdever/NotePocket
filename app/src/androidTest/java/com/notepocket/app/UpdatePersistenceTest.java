@@ -11,8 +11,9 @@ import static org.junit.Assert.*;
 /** Run after UiFlowTest, then reinstall the APK using adb install -r. */
 @RunWith(AndroidJUnit4.class)
 public class UpdatePersistenceTest {
-    @Test public void notesFilesAndPageNotesSurviveApkReinstallation() {
+    @Test public void notesFilesAndPageNotesSurviveApkReinstallation() throws Exception {
         Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();
+        assertEquals(3,context.getPackageManager().getPackageInfo(context.getPackageName(),0).versionCode);
         try(Store store=new Store(context)) {
             ContentValues note=store.query("SELECT * FROM notes WHERE title=?","ทบทวนบทเรียน").get(0);
             assertTrue(note.getAsString("body").contains("สรุปจากเอกสาร"));

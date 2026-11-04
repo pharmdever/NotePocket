@@ -5,3 +5,8 @@ local.properties
 *.jks
 *.keystore
 .idea/
+
+*.p12
+*-Secret.txt
+password.txt
+*signing-private*

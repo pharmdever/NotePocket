@@ -65,6 +65,7 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,-2,1);p.setMargins(dp(3),dp(3),dp(3),dp(3));row.addView(button(label,run,primary),p);
     }
     private void screen() {
+        getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR|View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
         root=vertical();root.setBackgroundColor(BG);root.setPadding(dp(18),dp(12),dp(18),dp(12));setContentView(root);
         root.setOnApplyWindowInsetsListener((v,i) -> { v.setPadding(dp(18),dp(12)+i.getSystemWindowInsetTop(),dp(10)+dp(8),dp(10)+i.getSystemWindowInsetBottom());return i; });
     }
