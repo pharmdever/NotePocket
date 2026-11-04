@@ -11,7 +11,7 @@ import org.junit.*;
 import org.junit.runner.RunWith;
 import java.io.*;
 import java.util.*;
-import static androidx.test.espresso.Espresso.*;
+import static androidx.test.espresso.Espresso.onView;
 import static androidx.test.espresso.action.ViewActions.*;
 import static androidx.test.espresso.matcher.ViewMatchers.*;
 import static org.junit.Assert.*;
@@ -25,10 +25,11 @@ public class UiFlowTest {
             store.save(-1,"แผนอ่านหนังสือสัปดาห์นี้","ทบทวนเซลล์และสารชีวโมเลกุล\n☐ ทำโจทย์วันละ 10 ข้อ","","การเรียน");
             long pinned=store.save(-1,"ไอเดียที่อยากเก็บไว้","พื้นที่เล็ก ๆ สำหรับความคิดใหม่และสิ่งที่อยากทำ","","ทั่วไป");store.flag(pinned,"pinned",1);
             String id=UUID.randomUUID().toString();File file=new File(context.getFilesDir(),id);
-            try(PdfDocument pdf=new PdfDocument()) {
+            PdfDocument pdf=new PdfDocument();
+            try {
                 for(int i=1;i<=2;i++) {PdfDocument.Page page=pdf.startPage(new PdfDocument.PageInfo.Builder(595,842,i).create());Canvas c=page.getCanvas();c.drawColor(0xffFAF8F1);Paint p=new Paint();p.setColor(0xff216B58);c.drawRect(40,60,555,240,p);p.setColor(Color.WHITE);p.setTextSize(32);c.drawText("BIOLOGY / "+i,70,150,p);p.setColor(0xff203B34);p.setTextSize(21);c.drawText("Cells, molecules and new ideas.",50,310,p);pdf.finishPage(page);}
                 try(OutputStream out=new FileOutputStream(file)) {pdf.writeTo(out);}
-            }
+            } finally {pdf.close();}
             ContentValues doc=new ContentValues();doc.put("id",id);doc.put("name","Biology study guide.pdf");doc.put("mime","application/pdf");doc.put("size",file.length());store.getWritableDatabase().insertOrThrow("docs",null,doc);
         }
         try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)) {

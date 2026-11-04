@@ -25,17 +25,18 @@ public final class Backup {
                     for(String key:row.keySet()) object.put(key,row.get(key));
                     rows.put(object);
                 }
+                if(rows.length()>10000) throw new IOException("Too many records");
                 manifest.put(table,rows);
             }
             byte[] json=manifest.toString().getBytes(StandardCharsets.UTF_8);
             if(json.length>MANIFEST_LIMIT) throw new IOException("Backup metadata too large");
-            zip.putNextEntry(new ZipEntry("manifest.json"));zip.write(json);zip.closeEntry();
+            zip.putNextEntry(new ZipEntry("manifest.json"));zip.write(json);zip.closeEntry();long total=json.length;
             for(ContentValues doc:store.query("SELECT * FROM docs")) {
                 String id=doc.getAsString("id");validId(id);
                 File file=new File(context.getFilesDir(),id);
                 if(!file.isFile()) throw new IOException("Document missing");
                 zip.putNextEntry(new ZipEntry("docs/"+id));
-                try(InputStream in=new FileInputStream(file)) { copy(in,zip,LIMIT); }
+                try(InputStream in=new FileInputStream(file)) { total+=copy(in,zip,LIMIT-total); }
                 zip.closeEntry();
             }
             db.setTransactionSuccessful();
