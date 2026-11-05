@@ -81,6 +81,8 @@ public final class PdfPageView extends View {
     public void setPage(Bitmap b) {bitmap=b;active.clear();drawing=false;strokes.clear();boxes.clear();glyphs.clear();clearSelection();redo.clear();needsPosition=true;reset();}
     public void reset() {zoom=1;offsetX=0;offsetY=bitmap==null?0:Math.max(0,(bitmap.getHeight()*baseScale()-getHeight())/2f);if(getWidth()>0&&getHeight()>0) needsPosition=false;invalidate();}
     public void zoomBy(float factor) {commitGesture();changeZoom(zoom*factor,getWidth()/2f,getHeight()/2f);}
+    public boolean canUndo() {return !strokes.isEmpty();}
+    public boolean canRedo() {return !redo.isEmpty();}
     public void undo() {
         commitGesture();if(strokes.isEmpty()) return;Ink last=strokes.remove(strokes.size()-1);
         if(persist()) redo.add(last);else strokes.add(last);invalidate();

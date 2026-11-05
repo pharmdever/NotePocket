@@ -13,7 +13,7 @@ import static org.junit.Assert.*;
 public class UpdatePersistenceTest {
     @Test public void notesFilesAndPageNotesSurviveApkReinstallation() throws Exception {
         Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();
-        assertEquals(5,context.getPackageManager().getPackageInfo(context.getPackageName(),0).versionCode);
+        assertEquals(6,context.getPackageManager().getPackageInfo(context.getPackageName(),0).versionCode);
         try(Store store=new Store(context)) {
             ContentValues note=store.query("SELECT * FROM notes WHERE title=?","ทบทวนบทเรียน").get(0);
             assertTrue(note.getAsString("body").contains("สรุปจากเอกสาร"));
