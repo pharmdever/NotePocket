@@ -12,10 +12,10 @@ import java.util.zip.*;
 public final class Backup {
     private static final long LIMIT=1024L*1024*1024;
     private static final int MANIFEST_LIMIT=32*1024*1024;
-    private static final String[] TABLES={"notes","docs","note_docs","page_notes","reading","page_ink","page_text","fonts"};
+    private static final String[] TABLES={"notes","docs","note_docs","page_notes","reading","page_ink","page_text","fonts","folders"};
     private Backup() {}
     public static void write(Context context,Store store,OutputStream stream) throws Exception {
-        JSONObject manifest=new JSONObject();manifest.put("format","NotePocket");manifest.put("version",5);
+        JSONObject manifest=new JSONObject();manifest.put("format","NotePocket");manifest.put("version",6);
         SQLiteDatabase db=store.getWritableDatabase();db.beginTransaction();
         try(ZipOutputStream zip=new ZipOutputStream(stream)) {
             for(String table:TABLES) {
@@ -63,18 +63,20 @@ public final class Backup {
                     if(total>LIMIT) throw new IOException("Archive too large");zip.closeEntry();
                 }
             }
-            if(manifest==null||!manifest.optString("format").equals("NotePocket")||(manifest.optInt("version")!=2&&manifest.optInt("version")!=3&&manifest.optInt("version")!=4&&manifest.optInt("version")!=5)) throw new IOException("Unsupported backup");
+            if(manifest==null||!manifest.optString("format").equals("NotePocket")||(manifest.optInt("version")!=2&&manifest.optInt("version")!=3&&manifest.optInt("version")!=4&&manifest.optInt("version")!=5&&manifest.optInt("version")!=6)) throw new IOException("Unsupported backup");
             for(String table:TABLES) if(rows(manifest,table).length()>10000) throw new IOException("Too many records");
             if(rows(manifest,"fonts").length()+store.query("SELECT id FROM fonts").size()>30) throw new IOException("Font library full");
             SQLiteDatabase db=store.getWritableDatabase();db.beginTransaction();
             try {
                 Map<Long,Long> notes=new HashMap<>();Map<String,String> docs=new HashMap<>();Map<String,String> fonts=new HashMap<>();
-                JSONArray input=manifest.getJSONArray("notes");
+                JSONArray input=rows(manifest,"folders");for(int i=0;i<input.length();i++) store.createFolder(input.getJSONObject(i).getString("name"));
+                input=manifest.getJSONArray("notes");
                 for(int i=0;i<input.length();i++) {
                     JSONObject row=input.getJSONObject(i);long old=row.getLong("id");
                     if(notes.containsKey(old)) throw new IOException("Duplicate note");
                     ContentValues v=new ContentValues();
                     for(String key:new String[]{"title","body","rich","folder"}) v.put(key,row.getString(key));
+                    v.put("soap",new SoapDraft(row.optString("soap","{}")).json());store.createFolder(row.getString("folder"));
                     v.put("tables",NoteTable.encode(NoteTable.decode(row.optString("tables","[]"))));
                     v.put("updated",row.getLong("updated"));v.put("pinned",row.getInt("pinned")==0?0:1);v.put("deleted",row.getInt("deleted")==0?0:1);
                     notes.put(old,db.insertOrThrow("notes",null,v));
@@ -122,7 +124,7 @@ public final class Backup {
         } finally { for(File file:created) file.delete();deleteTree(stage); }
     }
     private static JSONArray rows(JSONObject manifest,String table) throws JSONException {
-        if(!manifest.has(table)&&((table.equals("page_ink")&&manifest.getInt("version")==2)||((table.equals("page_text")||table.equals("fonts"))&&manifest.getInt("version")<4))) return new JSONArray();
+        if(!manifest.has(table)&&((table.equals("folders")&&manifest.getInt("version")<6)||(table.equals("page_ink")&&manifest.getInt("version")==2)||((table.equals("page_text")||table.equals("fonts"))&&manifest.getInt("version")<4))) return new JSONArray();
         return manifest.getJSONArray(table);
     }
     private static void validId(String id) throws IOException { if(id==null||!id.matches("[A-Za-z0-9-]{1,80}")) throw new IOException("Invalid document ID"); }

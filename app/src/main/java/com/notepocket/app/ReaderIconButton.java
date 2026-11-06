@@ -32,6 +32,7 @@ public final class ReaderIconButton extends View {
             case "color": letter(canvas,"A",true,false);paint.setColor(0xffD12D39);paint.setStrokeWidth(3);line(canvas,5,22,19,22);break;
             case "bullet": case "number": for(int i=0;i<3;i++) {int y=6+i*6;line(canvas,9,y,21,y);if(icon.equals("bullet")) {paint.setStyle(Paint.Style.FILL);canvas.drawCircle(3,y,1.3f,paint);paint.setStyle(Paint.Style.STROKE);}else {paint.setStyle(Paint.Style.FILL);paint.setTextSize(6);canvas.drawText(""+(i+1),2,y+2,paint);paint.setStyle(Paint.Style.STROKE);}}break;
             case "check": canvas.drawRoundRect(new RectF(3,3,21,21),2,2,paint);path(canvas,7,12,11,16,18,8);break;
+            case "soap": canvas.drawRoundRect(new RectF(4,3,20,22),2,2,paint);line(canvas,9,2,15,2);line(canvas,8,8,16,8);line(canvas,8,12,16,12);line(canvas,8,16,14,16);break;
             case "table": canvas.drawRect(3,4,21,20,paint);line(canvas,3,9,21,9);line(canvas,3,15,21,15);line(canvas,9,4,9,20);line(canvas,15,4,15,20);break;
             case "clear": path(canvas,4,15,13,5,20,12,12,21,9,21,4,15);line(canvas,3,22,21,22);break;
             case "find": canvas.drawCircle(10,10,6,paint);line(canvas,15,15,22,22);break;

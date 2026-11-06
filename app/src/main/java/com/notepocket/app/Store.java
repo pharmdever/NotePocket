@@ -8,13 +8,14 @@ import java.util.*;
 /** Additive, transactional schema migration; never drops user data. */
 public final class Store extends SQLiteOpenHelper {
     public Store(Context context) { this(context, "notepocket.db"); }
-    Store(Context context, String name) { super(context,name,null,5); }
+    Store(Context context, String name) { super(context,name,null,6); }
     @Override public void onCreate(SQLiteDatabase db) { migrate(db); }
     @Override public void onUpgrade(SQLiteDatabase db,int oldVersion,int newVersion) { migrate(db); }
     private void migrate(SQLiteDatabase db) {
         db.execSQL("CREATE TABLE IF NOT EXISTS notes (id INTEGER PRIMARY KEY, title TEXT NOT NULL, body TEXT NOT NULL, updated INTEGER NOT NULL)");
         db.execSQL("CREATE TABLE IF NOT EXISTS docs (id TEXT PRIMARY KEY, name TEXT NOT NULL, mime TEXT NOT NULL, size INTEGER NOT NULL)");
         db.execSQL("CREATE TABLE IF NOT EXISTS note_docs (note_id INTEGER NOT NULL, doc_id TEXT NOT NULL, PRIMARY KEY(note_id,doc_id))");
+        addColumn(db,"notes","soap","TEXT NOT NULL DEFAULT '{}'");
         addColumn(db,"notes","tables","TEXT NOT NULL DEFAULT '[]'");
         addColumn(db,"notes","rich","TEXT NOT NULL DEFAULT ''");
         addColumn(db,"notes","folder","TEXT NOT NULL DEFAULT 'ทั่วไป'");
@@ -25,6 +26,8 @@ public final class Store extends SQLiteOpenHelper {
         db.execSQL("CREATE TABLE IF NOT EXISTS page_ink (doc_id TEXT NOT NULL, page INTEGER NOT NULL, drawing TEXT NOT NULL DEFAULT '[]', PRIMARY KEY(doc_id,page))");
         db.execSQL("CREATE TABLE IF NOT EXISTS page_text (doc_id TEXT NOT NULL, page INTEGER NOT NULL, boxes TEXT NOT NULL DEFAULT '[]', PRIMARY KEY(doc_id,page))");
         db.execSQL("CREATE TABLE IF NOT EXISTS fonts (id TEXT PRIMARY KEY, name TEXT NOT NULL, size INTEGER NOT NULL)");
+        db.execSQL("CREATE TABLE IF NOT EXISTS folders(name TEXT PRIMARY KEY NOT NULL)");
+        db.execSQL("INSERT OR IGNORE INTO folders(name) VALUES('ทั่วไป')");db.execSQL("INSERT OR IGNORE INTO folders(name) SELECT DISTINCT folder FROM notes");
         db.execSQL("CREATE INDEX IF NOT EXISTS notes_order ON notes(deleted,pinned,updated)");
     }
     private void addColumn(SQLiteDatabase db,String table,String name,String type) {
@@ -53,7 +56,7 @@ public final class Store extends SQLiteOpenHelper {
         return rows.isEmpty()?null:rows.get(0);
     }
     public long save(long id,String title,String body,String rich,String folder) {
-        ContentValues v=new ContentValues(); v.put("title",title.trim().isEmpty()?"ไม่มีชื่อ":title.trim());
+        createFolder(folder);ContentValues v=new ContentValues(); v.put("title",title.trim().isEmpty()?"ไม่มีชื่อ":title.trim());
         v.put("body",body); v.put("rich",rich); v.put("folder",folder); v.put("updated",System.currentTimeMillis());
         if(id<0) return getWritableDatabase().insertOrThrow("notes",null,v);
         if(getWritableDatabase().update("notes",v,"id=?",new String[]{""+id})!=1) throw new IllegalStateException("Note missing");
@@ -63,6 +66,13 @@ public final class Store extends SQLiteOpenHelper {
         String validated=NoteTable.encode(NoteTable.decode(tables));SQLiteDatabase db=getWritableDatabase();db.beginTransaction();
         try {long saved=save(id,title,body,rich,folder);ContentValues v=new ContentValues();v.put("tables",validated);if(db.update("notes",v,"id=?",new String[]{""+saved})!=1) throw new IllegalStateException("Note missing");db.setTransactionSuccessful();return saved;}finally {db.endTransaction();}
     }
+    public long save(long id,String title,String body,String rich,String folder,String tables,String soap) {
+        String validated=new SoapDraft(soap).json();SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try {long saved=save(id,title,body,rich,folder,tables);ContentValues v=new ContentValues();v.put("soap",validated);if(db.update("notes",v,"id=?",new String[]{""+saved})!=1) throw new IllegalStateException("Note missing");db.setTransactionSuccessful();return saved;}finally {db.endTransaction();}
+    }
+    public void createFolder(String name) {if(name==null||name.trim().isEmpty()||name.length()>80) throw new IllegalArgumentException("Invalid folder");ContentValues v=new ContentValues();v.put("name",name.trim());getWritableDatabase().insertWithOnConflict("folders",null,v,SQLiteDatabase.CONFLICT_IGNORE);}
+    public List<ContentValues> folders() {return query("SELECT f.name,COUNT(n.id) AS count FROM folders f LEFT JOIN notes n ON n.folder=f.name AND n.deleted=0 GROUP BY f.name ORDER BY f.name COLLATE NOCASE");}
+    public void renameFolder(String old,String name) {if(old.equals("ทั่วไป")||name==null||name.trim().isEmpty()||name.trim().length()>80) throw new IllegalArgumentException("Invalid folder");name=name.trim();if(old.equals(name)) return;SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try {if(!query("SELECT name FROM folders WHERE name=?",name).isEmpty()) throw new IllegalArgumentException("Folder exists");ContentValues v=new ContentValues();v.put("name",name);if(db.update("folders",v,"name=?",new String[]{old})!=1) throw new IllegalArgumentException("Missing folder");v.clear();v.put("folder",name);db.update("notes",v,"folder=?",new String[]{old});db.setTransactionSuccessful();}finally {db.endTransaction();}}
+    public void deleteFolder(String name) {if(name.equals("ทั่วไป")) throw new IllegalArgumentException();SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try {createFolder("ทั่วไป");ContentValues v=new ContentValues();v.put("folder","ทั่วไป");db.update("notes",v,"folder=?",new String[]{name});db.delete("folders","name=?",new String[]{name});db.setTransactionSuccessful();}finally {db.endTransaction();}}
     public void flag(long id,String column,int value) {
         if(!column.equals("deleted")&&!column.equals("pinned")) throw new IllegalArgumentException();
         ContentValues v=new ContentValues(); v.put(column,value); getWritableDatabase().update("notes",v,"id=?",new String[]{""+id});
