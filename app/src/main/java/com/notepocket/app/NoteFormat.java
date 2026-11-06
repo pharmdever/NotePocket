@@ -7,7 +7,19 @@ import org.json.*;
 /** Lossless note formatting, including colors and sizes unsupported by Android's HTML reader. */
 public final class NoteFormat {
     private NoteFormat() {}
-    public static Spanned snapshot(Spanned value) {SpannableString copy=new SpannableString(value.toString());for(CharacterStyle original:value.getSpans(0,value.length(),CharacterStyle.class)) {CharacterStyle span=original.getUnderlying();if(!(span instanceof StyleSpan||span instanceof UnderlineSpan||span instanceof StrikethroughSpan||span instanceof ForegroundColorSpan||span instanceof BackgroundColorSpan||span instanceof AbsoluteSizeSpan||span instanceof RelativeSizeSpan)) continue;int start=value.getSpanStart(original),end=value.getSpanEnd(original);if(start>=0&&end>start) copy.setSpan(span,start,end,Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);}return copy;}
+    public static Spanned snapshot(Spanned value) {
+        SpannableString copy=new SpannableString(value.toString());
+        for(CharacterStyle original:value.getSpans(0,value.length(),CharacterStyle.class)) {CharacterStyle span=copyStyle(original.getUnderlying());if(span==null) continue;int start=value.getSpanStart(original),end=value.getSpanEnd(original);if(start>=0&&end>start) copy.setSpan(span,start,end,Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);}
+        return copy;
+    }
+    private static CharacterStyle copyStyle(CharacterStyle span) {
+        if(span instanceof StyleSpan) return new StyleSpan(((StyleSpan)span).getStyle());
+        if(span instanceof UnderlineSpan) return new UnderlineSpan();if(span instanceof StrikethroughSpan) return new StrikethroughSpan();
+        if(span instanceof ForegroundColorSpan) return new ForegroundColorSpan(((ForegroundColorSpan)span).getForegroundColor());
+        if(span instanceof BackgroundColorSpan) return new BackgroundColorSpan(((BackgroundColorSpan)span).getBackgroundColor());
+        if(span instanceof AbsoluteSizeSpan) return new AbsoluteSizeSpan(((AbsoluteSizeSpan)span).getSize(),((AbsoluteSizeSpan)span).getDip());
+        if(span instanceof RelativeSizeSpan) return new RelativeSizeSpan(((RelativeSizeSpan)span).getSizeChange());return null;
+    }
     public static void toggleStyle(Editable text,int lo,int hi,int bit) {
         StyleSpan[] spans=text.getSpans(lo,hi,StyleSpan.class);java.util.TreeSet<Integer> edges=new java.util.TreeSet<>();edges.add(lo);edges.add(hi);
         for(StyleSpan span:spans) {edges.add(Math.max(lo,text.getSpanStart(span)));edges.add(Math.min(hi,text.getSpanEnd(span)));}

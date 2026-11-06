@@ -8,6 +8,11 @@ collect() {
   python3 - <<'PYSCREEN'
 from pathlib import Path
 import base64
+diagnostics=Path('qa-output/logcat.txt')
+if diagnostics.is_file():
+    lines=diagnostics.read_text(errors='replace').splitlines()
+    interesting=[line for line in lines if any(word in line for word in ['AutofillManager','FAILED BINDER TRANSACTION','DeadSystem','FATAL EXCEPTION','OutOfMemoryError','ANR in'])]
+    for line in interesting[-80:]: print('NOTEPOCKET_DIAGNOSTIC:'+line)
 report=Path('qa-output/performance.json')
 if report.is_file(): print('NOTEPOCKET_PERFORMANCE:'+report.read_text())
 for image in sorted(Path('qa-output/screenshots').glob('*.png')):

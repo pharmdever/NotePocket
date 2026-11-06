@@ -113,8 +113,14 @@ public class MainActivity extends Activity {
         LinearLayout c=vertical();c.setPadding(dp(17),dp(13),dp(17),dp(13));c.setBackground(PocketTheme.shape(this,PocketTheme.SURFACE,22,true));
         LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.setMargins(0,dp(6),0,dp(6));parent.addView(c,p);return c;
     }
+    /** Note fields are documents, not autofill forms. NO alone is advisory on Android 15. */
+    private static final class PocketInput extends EditText {
+        PocketInput(Context context) {super(context);setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO);}
+        @Override public int getAutofillType() {return View.AUTOFILL_TYPE_NONE;}
+        @Override public android.view.autofill.AutofillValue getAutofillValue() {return null;}
+    }
     private EditText input(String hint,boolean single) {
-        EditText e=new EditText(this);e.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO);e.setHint(hint);e.setTextColor(INK);e.setHintTextColor(MUTED);e.setTextSize(17);e.setSingleLine(single);e.setMinHeight(dp(52));e.setPadding(dp(14),dp(12),dp(14),dp(12));e.setBackground(PocketTheme.field(this));return e;
+        EditText e=new PocketInput(this);e.setHint(hint);e.setTextColor(INK);e.setHintTextColor(MUTED);e.setTextSize(17);e.setSingleLine(single);e.setMinHeight(dp(52));e.setPadding(dp(14),dp(12),dp(14),dp(12));e.setBackground(PocketTheme.field(this));return e;
     }
     private void toast(String s) { Toast.makeText(this,s,Toast.LENGTH_LONG).show(); }
     private void keyboardOff() { ((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(root.getWindowToken(),0); }
