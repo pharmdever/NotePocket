@@ -345,7 +345,7 @@ public class MainActivity extends Activity {
         }
     }
     private void noteTableMenu(NoteTable table) {
-        new AlertDialog.Builder(this).setTitle("จัดการตาราง").setItems(new String[]{"เพิ่มแถวด้านล่าง","เพิ่มคอลัมน์ด้านขวา","ลบแถว…","ลบคอลัมน์…","ลบตาราง","แทรกแถว…","แทรกคอลัมน์…","ความกว้างคอลัมน์…","วางจาก Excel / Sheets","คัดลอกตาราง","ส่งออก CSV"},(d,index)->{
+        new AlertDialog.Builder(this).setTitle("จัดการตาราง").setItems(new String[]{"เพิ่มแถวด้านล่าง","เพิ่มคอลัมน์ด้านขวา","ลบแถว…","ลบคอลัมน์…","ลบตาราง","แทรกแถว…","แทรกคอลัมน์…","ความกว้างคอลัมน์…","วางจาก Excel / Sheets","คัดลอกตาราง","ส่งออก CSV"},(d,index)->handler.post(()->{
             if(index==0) {if(table.cells.size()>=NoteTable.MAX_ROWS) {toast("สูงสุด 30 แถวต่อตาราง");return;}rememberNote(false);table.insertRow(table.cells.size());finishTableChange();}
             else if(index==1) {if(table.columns()>=NoteTable.MAX_COLS) {toast("สูงสุด 8 คอลัมน์ต่อตาราง");return;}rememberNote(false);table.insertColumn(table.columns());finishTableChange();}
             else if(index==2||index==3) {boolean rows=index==2;int count=rows?table.cells.size():table.columns();if(count<=1) {toast("ต้องเหลืออย่างน้อย 1 แถวและ 1 คอลัมน์");return;}String[] labels=new String[count];for(int i=0;i<count;i++) labels[i]=(rows?"แถว ":"คอลัมน์ ")+(i+1);new AlertDialog.Builder(this).setTitle(rows?"เลือกแถวที่จะลบ":"เลือกคอลัมน์ที่จะลบ").setItems(labels,(dialog,which)->confirm("ลบข้อมูลใน"+labels[which]+"?","ย้อนกลับได้ด้วยปุ่มย้อนกลับข้อความ",()->{rememberNote(false);if(rows) table.cells.remove(which);else table.removeColumn(which);finishTableChange();})).show();}
@@ -355,7 +355,7 @@ public class MainActivity extends Activity {
             else if(index==9) {((android.content.ClipboardManager)getSystemService(CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("NotePocket table",TableTransfer.write(table,false)));toast("คัดลอกตารางแล้ว วางใน Excel หรือ Sheets ได้");}
             else if(index==10) exportTableCsv(table);
             else confirm("ลบตารางนี้?","ย้อนกลับได้ด้วยปุ่มย้อนกลับข้อความ",()->{rememberNote(false);tables.remove(table);finishTableChange();});
-        }).show();
+        })).show();
     }
     private void finishTableChange() {keyboardOff();renderNoteTables();changed();updateNoteTools();}
 
@@ -373,15 +373,18 @@ public class MainActivity extends Activity {
     }
     private void arrangeNoteTools() {
         List<String> order=NoteTools.order(readerPrefs().getString("noteToolOrder","[]"));String[] labels=new String[order.size()];for(int i=0;i<labels.length;i++) labels[i]=(i+1)+". "+NoteTools.name(order.get(i));
-        new AlertDialog.Builder(this).setTitle("จัดลำดับเครื่องมือ").setItems(labels,(d,which)->new AlertDialog.Builder(this).setTitle(NoteTools.name(order.get(which))).setItems(new String[]{"ย้ายไปหน้าแรก","เลื่อนขึ้นหนึ่งตำแหน่ง","เลื่อนลงหนึ่งตำแหน่ง"},(dialog,move)->{int destination=move==0?0:move==1?Math.max(0,which-1):Math.min(order.size()-1,which+1);String key=order.remove(which);order.add(destination,key);readerPrefs().edit().putString("noteToolOrder",new org.json.JSONArray(order).toString()).apply();if(editor) {applyNoteToolOrder();updateRecentTool();}arrangeNoteTools();}).show()).setNeutralButton("ค่าเริ่มต้น",(d,w)->{readerPrefs().edit().remove("noteToolOrder").apply();if(editor) {applyNoteToolOrder();updateRecentTool();}}).setPositiveButton("เสร็จ",null).show();
+        new AlertDialog.Builder(this).setTitle("จัดลำดับเครื่องมือ").setItems(labels,(d,which)->handler.post(()->moveNoteTool(order,which))).setNeutralButton("ค่าเริ่มต้น",(d,w)->{readerPrefs().edit().remove("noteToolOrder").apply();if(editor) {applyNoteToolOrder();updateRecentTool();}}).setPositiveButton("เสร็จ",null).show();
+    }
+    private void moveNoteTool(List<String> order,int which) {
+        new AlertDialog.Builder(this).setTitle(NoteTools.name(order.get(which))).setItems(new String[]{"ย้ายไปหน้าแรก","เลื่อนขึ้นหนึ่งตำแหน่ง","เลื่อนลงหนึ่งตำแหน่ง"},(dialog,move)->handler.post(()->{int destination=move==0?0:move==1?Math.max(0,which-1):Math.min(order.size()-1,which+1);String key=order.remove(which);order.add(destination,key);readerPrefs().edit().putString("noteToolOrder",new org.json.JSONArray(order).toString()).apply();if(editor) {applyNoteToolOrder();updateRecentTool();}arrangeNoteTools();})).show();
     }
     private void manageFolders(boolean choose) {
         keyboardOff();List<ContentValues> folders=store.folders();String[] labels=new String[folders.size()];for(int i=0;i<labels.length;i++) labels[i]=folders.get(i).getAsString("name")+" ("+folders.get(i).getAsInteger("count")+")";
-        new AlertDialog.Builder(this).setTitle(choose?"ย้ายโน้ตเข้าโฟลเดอร์":"โฟลเดอร์ของฉัน").setItems(labels,(d,index)->{String name=folders.get(index).getAsString("name");if(choose) {folder=name;changed();saveNote(true);toast("ย้ายเข้า "+name+" แล้ว");}else folderActions(name);}).setPositiveButton("สร้างโฟลเดอร์",(d,w)->folderNameDialog(null,choose)).setNegativeButton("ปิด",null).show();
+        new AlertDialog.Builder(this).setTitle(choose?"ย้ายโน้ตเข้าโฟลเดอร์":"โฟลเดอร์ของฉัน").setItems(labels,(d,index)->handler.post(()->{String name=folders.get(index).getAsString("name");if(choose) {folder=name;changed();saveNote(true);toast("ย้ายเข้า "+name+" แล้ว");}else folderActions(name);})).setPositiveButton("สร้างโฟลเดอร์",(d,w)->handler.post(()->folderNameDialog(null,choose))).setNegativeButton("ปิด",null).show();
     }
     private void folderActions(String name) {
         String[] choices=name.equals("ทั่วไป")?new String[]{"เปิดโฟลเดอร์"}:new String[]{"เปิดโฟลเดอร์","เปลี่ยนชื่อ","ลบโฟลเดอร์"};
-        new AlertDialog.Builder(this).setTitle(name).setItems(choices,(d,index)->{if(index==0) {filter="folder:"+name;query="";tab="notes";home();}else if(index==1) folderNameDialog(name,false);else confirm("ลบโฟลเดอร์ "+name+"?","โน้ตทั้งหมดจะย้ายไปทั่วไป และยังเปิดอ่านได้",()->{store.deleteFolder(name);if(filter.equals("folder:"+name)) filter="all";home();});}).show();
+        new AlertDialog.Builder(this).setTitle(name).setItems(choices,(d,index)->handler.post(()->{if(index==0) {filter="folder:"+name;query="";tab="notes";home();}else if(index==1) folderNameDialog(name,false);else confirm("ลบโฟลเดอร์ "+name+"?","โน้ตทั้งหมดจะย้ายไปทั่วไป และยังเปิดอ่านได้",()->{store.deleteFolder(name);if(filter.equals("folder:"+name)) filter="all";home();});})).show();
     }
     private void folderNameDialog(String old,boolean choose) {
         EditText field=input("ชื่อโฟลเดอร์",true);field.setFilters(new InputFilter[]{new InputFilter.LengthFilter(80)});if(old!=null) field.setText(old);
@@ -393,7 +396,7 @@ public class MainActivity extends Activity {
     }
     private void tableColumnWidth(NoteTable table) {
         String[] labels=new String[table.columns()];for(int i=0;i<labels.length;i++) labels[i]="คอลัมน์ "+(i+1)+" · "+table.width(i);
-        new AlertDialog.Builder(this).setTitle("ปรับความกว้างคอลัมน์").setItems(labels,(d,column)->{LinearLayout form=vertical();form.setPadding(dp(18),dp(8),dp(18),dp(8));TextView size=text("ความกว้าง "+table.width(column),16,INK);form.addView(size);SeekBar bar=new SeekBar(this);bar.setMax(280);bar.setProgress(table.width(column)-80);bar.setContentDescription("ความกว้างคอลัมน์");form.addView(bar);bar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {public void onProgressChanged(SeekBar v,int progress,boolean user) {size.setText("ความกว้าง "+(progress+80));}public void onStartTrackingTouch(SeekBar v) {}public void onStopTrackingTouch(SeekBar v) {}});new AlertDialog.Builder(this).setTitle("คอลัมน์ "+(column+1)).setView(form).setNegativeButton("ยกเลิก",null).setPositiveButton("บันทึก",(dialog,w)->{rememberNote(false);while(table.widths.size()<table.columns()) table.widths.add(150);table.widths.set(column,bar.getProgress()+80);finishTableChange();}).show();}).show();
+        new AlertDialog.Builder(this).setTitle("ปรับความกว้างคอลัมน์").setItems(labels,(d,column)->handler.post(()->{LinearLayout form=vertical();form.setPadding(dp(18),dp(8),dp(18),dp(8));TextView size=text("ความกว้าง "+table.width(column),16,INK);form.addView(size);SeekBar bar=new SeekBar(this);bar.setMax(280);bar.setProgress(table.width(column)-80);bar.setContentDescription("ความกว้างคอลัมน์");form.addView(bar);bar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {public void onProgressChanged(SeekBar v,int progress,boolean user) {size.setText("ความกว้าง "+(progress+80));}public void onStartTrackingTouch(SeekBar v) {}public void onStopTrackingTouch(SeekBar v) {}});new AlertDialog.Builder(this).setTitle("คอลัมน์ "+(column+1)).setView(form).setNegativeButton("ยกเลิก",null).setPositiveButton("บันทึก",(dialog,w)->{rememberNote(false);while(table.widths.size()<table.columns()) table.widths.add(150);table.widths.set(column,bar.getProgress()+80);finishTableChange();}).show();})).show();
     }
     private void pasteTable(NoteTable table) {
         android.content.ClipboardManager clipboard=(android.content.ClipboardManager)getSystemService(CLIPBOARD_SERVICE);ClipData clip=clipboard.getPrimaryClip();if(clip==null||clip.getItemCount()==0) {toast("คัดลอกช่องจาก Excel หรือ Sheets ก่อน แล้วเลือกวาง");return;}
