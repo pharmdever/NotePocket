@@ -1,10 +1,32 @@
 <resources>
     <style name="AppTheme" parent="android:style/Theme.Material.Light.NoActionBar">
-        <item name="android:fontFamily">sans</item>
-        <item name="android:colorAccent">#24766B</item>
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:colorAccent">#245849</item>
+        <item name="android:colorControlActivated">#245849</item>
+        <item name="android:colorBackground">#F8F6F0</item>
+        <item name="android:textColorPrimary">#203D34</item>
+        <item name="android:textColorSecondary">#64746C</item>
         <item name="android:windowLightStatusBar">true</item>
-        <item name="android:statusBarColor">#F5F6F1</item>
-        <item name="android:navigationBarColor">#F5F6F1</item>
+        <item name="android:statusBarColor">#F8F6F0</item>
+        <item name="android:navigationBarColor">#F8F6F0</item>
         <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:popupMenuStyle">@style/PocketPopupMenu</item>
+        <item name="android:alertDialogTheme">@style/PocketDialogTheme</item>
+    </style>
+    <style name="PocketPopupMenu" parent="android:style/Widget.Material.Light.PopupMenu">
+        <item name="android:popupBackground">@drawable/dialog_surface</item>
+    </style>
+    <style name="PocketDialogTheme" parent="android:style/Theme.Material.Light.Dialog.Alert">
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:colorAccent">#245849</item>
+        <item name="android:colorBackground">#FFFEFA</item>
+        <item name="android:textColorPrimary">#203D34</item>
+        <item name="android:textColorSecondary">#64746C</item>
+        <item name="android:windowBackground">@drawable/dialog_surface</item>
+        <item name="android:backgroundDimAmount">0.35</item>
+        <item name="android:windowMinWidthMinor">92%</item>
+        <item name="android:windowMinWidthMajor">70%</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowSoftInputMode">adjustResize</item>
     </style>
 </resources>

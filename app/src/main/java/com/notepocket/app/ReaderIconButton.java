@@ -17,12 +17,17 @@ public final class ReaderIconButton extends View {
     @Override public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo info) {super.onInitializeAccessibilityNodeInfo(info);info.setClassName("android.widget.Button");info.setSelected(isSelected());}
     @Override protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);float density=getResources().getDisplayMetrics().density;
-        int color=!isEnabled()?0xffA2AAA4:isSelected()?Color.WHITE:0xff216B58;
-        paint.setStyle(Paint.Style.FILL);paint.setColor(isSelected()?0xff216B58:isPressed()||isFocused()?0xffD9E7D7:0xffEFF4EC);
+        int color=!isEnabled()?0xff8A968B:isSelected()?Color.WHITE:PocketTheme.FOREST;
+        paint.setStyle(Paint.Style.FILL);paint.setColor(isSelected()?PocketTheme.FOREST:isPressed()||isFocused()?0xffD4E1CB:PocketTheme.SAGE);
         canvas.drawRoundRect(new RectF(3*density,3*density,getWidth()-3*density,getHeight()-3*density),12*density,12*density,paint);
         canvas.save();float side=24*density,cy=caption==null?getHeight()/2f:22*density;canvas.translate((getWidth()-side)/2,cy-side/2);canvas.scale(side/24,side/24);
         paint.setColor(color);paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(1.9f);paint.setStrokeCap(Paint.Cap.ROUND);paint.setStrokeJoin(Paint.Join.ROUND);paint.setPathEffect(null);
         switch(icon) {
+            case "help": canvas.drawCircle(12,12,9,paint);{Path p=new Path();p.moveTo(9,8);p.cubicTo(9,4,17,4,16,9);p.cubicTo(16,11,12,11,12,14);canvas.drawPath(p,paint);paint.setStyle(Paint.Style.FILL);canvas.drawCircle(12,18,1,paint);}break;
+            case "files": path(canvas,7,2,17,2,21,6,21,19,7,19,7,2);path(canvas,3,6,3,23,17,23);line(canvas,10,8,17,8);line(canvas,10,12,17,12);break;
+            case "settings": canvas.drawCircle(12,12,7,paint);canvas.drawCircle(12,12,2.5f,paint);for(int i=0;i<8;i++) {double a=i*Math.PI/4;line(canvas,12+(float)Math.cos(a)*8,12+(float)Math.sin(a)*8,12+(float)Math.cos(a)*10,12+(float)Math.sin(a)*10);}break;
+            case "trash": line(canvas,4,6,20,6);line(canvas,9,3,15,3);path(canvas,6,6,7,21,17,21,18,6);line(canvas,10,10,10,17);line(canvas,14,10,14,17);break;
+            case "bookmark": path(canvas,6,3,18,3,18,22,12,17,6,22,6,3);break;
             case "bold": letter(canvas,"B",true,false);break;
             case "italic": letter(canvas,"I",false,true);break;
             case "underline": letter(canvas,"U",false,false);line(canvas,5,22,19,22);break;

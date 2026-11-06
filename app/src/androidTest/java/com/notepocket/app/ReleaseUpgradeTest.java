@@ -9,11 +9,11 @@ import static org.junit.Assert.*;
 @RunWith(AndroidJUnit4.class)
 public class ReleaseUpgradeTest {
     @Test public void signedReleaseUpgradeKeepsPreviousUserData() throws Exception {
-        Context c=InstrumentationRegistry.getInstrumentation().getTargetContext();assertEquals(7,c.getPackageManager().getPackageInfo(c.getPackageName(),0).versionCode);
+        Context c=InstrumentationRegistry.getInstrumentation().getTargetContext();assertEquals(8,c.getPackageManager().getPackageInfo(c.getPackageName(),0).versionCode);
         try(Store store=new Store(c)) {
             assertEquals("original note",store.note(77).getAsString("body"));assertEquals("เรียน",store.note(77).getAsString("folder"));assertEquals(1,(int)store.note(77).getAsInteger("pinned"));
             assertEquals("release-upgrade-doc",store.attachments(77).get(0).getAsString("id"));assertEquals(6,new File(c.getFilesDir(),"release-upgrade-doc").length());
-            assertEquals("original page note",store.page("release-upgrade-doc",0).getAsString("body"));assertEquals(1,Ink.decode(store.drawing("release-upgrade-doc",0)).size());TextBox box=TextBox.decode(store.textBoxes("release-upgrade-doc",0)).get(0);assertEquals("ข้อความก่อนอัปเดต",box.text);assertEquals(0xffE13A3A,box.color);assertTrue(new File(c.getFilesDir(),box.font).isFile());assertEquals(1,store.query("SELECT * FROM fonts").size());assertEquals(6,store.getReadableDatabase().getVersion());assertEquals("เดิม",NoteTable.decode(store.note(77).getAsString("tables")).get(0).cells.get(0).get(0));assertEquals(150,NoteTable.decode(store.note(77).getAsString("tables")).get(0).width(0));assertEquals("{}",store.note(77).getAsString("soap"));assertFalse(store.query("SELECT * FROM folders WHERE name=?","เรียน").isEmpty());
+            assertEquals("original page note",store.page("release-upgrade-doc",0).getAsString("body"));assertEquals(1,Ink.decode(store.drawing("release-upgrade-doc",0)).size());TextBox box=TextBox.decode(store.textBoxes("release-upgrade-doc",0)).get(0);assertEquals("ข้อความก่อนอัปเดต",box.text);assertEquals(0xffE13A3A,box.color);assertTrue(new File(c.getFilesDir(),box.font).isFile());assertEquals(1,store.query("SELECT * FROM fonts").size());assertEquals(6,store.getReadableDatabase().getVersion());assertEquals("เดิม",NoteTable.decode(store.note(77).getAsString("tables")).get(0).cells.get(0).get(0));assertEquals(150,NoteTable.decode(store.note(77).getAsString("tables")).get(0).width(0));assertEquals("SOAP ก่อนเปลี่ยนธีม",new SoapDraft(store.note(77).getAsString("soap")).get("s"));assertFalse(store.query("SELECT * FROM folders WHERE name=?","empty-stable-folder").isEmpty());assertFalse(store.query("SELECT * FROM folders WHERE name=?","เรียน").isEmpty());
         }
     }
 }
