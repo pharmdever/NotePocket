@@ -63,7 +63,8 @@ public class MainActivity extends Activity {
             tab=state.getString("tab","notes");filter=state.getString("filter","all");query=state.getString("query","");
             pendingAttach=state.getLong("pendingAttach",-1);exportId=state.getString("exportId");annotatedExportId=state.getString("annotatedExportId");
             if(state.getString("pdfId")!=null) {pdfReturnNote=state.getLong("pdfReturnNote",-1);openPdf(state.getString("pdfId"),state.getString("pdfName","PDF"),state.getInt("page",0),pdfReturnNote);if(pdf!=null) {inkMode(state.getInt("pdfMode",0)==PdfPageView.SELECT?PdfPageView.READ:state.getInt("pdfMode",0));setFullscreen(state.getBoolean("fullscreen"));String draft=state.getString("textDraft");if(draft!=null) handler.post(()->{TextBox box=TextBox.decode(draft).get(0);editTextBox(box,box.x,box.y);});}return;}
-            if(state.getBoolean("editor")) { edit(state.getLong("noteId",-1));return; }
+            if(state.getBoolean("editor")) {edit(state.getLong("noteId",-1));
+                if(editor) {int start=Math.max(0,Math.min(state.getInt("noteStart",0),body.length())),end=Math.max(0,Math.min(state.getInt("noteEnd",start),body.length()));body.setSelection(start,end);final int y=state.getInt("noteScroll",0);noteScroll.post(()->noteScroll.scrollTo(0,y));}return; }
         }
         home();
     }
@@ -238,14 +239,9 @@ public class MainActivity extends Activity {
     private void style(int type) {
         int start=body.getSelectionStart(),end=body.getSelectionEnd();
         if(!body.hasFocus()||start<0||start==end) {toast("เลือกข้อความที่ต้องการจัดรูปแบบก่อน");body.requestFocus();return;}
-        rememberNote(false);int lo=Math.min(start,end),hi=Math.max(start,end);Editable e=body.getText();boolean removed=false;
-        for(StyleSpan span:e.getSpans(lo,hi,StyleSpan.class)) if(span.getStyle()==type&&e.getSpanStart(span)<=lo&&e.getSpanEnd(span)>=hi) {
-            int a=e.getSpanStart(span),b=e.getSpanEnd(span);e.removeSpan(span);
-            if(a<lo) e.setSpan(new StyleSpan(type),a,lo,Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-            if(b>hi) e.setSpan(new StyleSpan(type),hi,b,Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);removed=true;
-        }
-        if(!removed) e.setSpan(new StyleSpan(type),lo,hi,Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);changed();updateNoteTools();
+        rememberNote(false);NoteFormat.toggleStyle(body.getText(),Math.min(start,end),Math.max(start,end),type);changed();updateNoteTools();
     }
+
     private void insertChecklist() {
         body.requestFocus();int cursor=Math.max(0,body.getSelectionStart());Editable e=body.getText();int start=e.toString().lastIndexOf('\n',Math.max(-1,cursor-1))+1;
         String prefix=e.subSequence(start,Math.min(e.length(),start+2)).toString();
@@ -268,11 +264,11 @@ public class MainActivity extends Activity {
         HorizontalScrollView scroll=new HorizontalScrollView(this);scroll.setHorizontalScrollBarEnabled(true);scroll.setHorizontalFadingEdgeEnabled(true);LinearLayout row=horizontal(null);scroll.addView(row);noteToolbar.addView(scroll,new LinearLayout.LayoutParams(-1,dp(58)));
         noteUndo=noteTool(row,"undo","ย้อนกลับข้อความ","ย้อนกลับ",()->restoreNoteHistory(false));noteRedo=noteTool(row,"redo","ทำซ้ำข้อความ","ทำซ้ำ",()->restoreNoteHistory(true));
         noteTool(row,"bold","ตัวหนา","หนา",()->style(Typeface.BOLD));noteTool(row,"italic","ตัวเอียง","เอียง",()->style(Typeface.ITALIC));
+        noteTool(row,"check","เช็กลิสต์","เช็กลิสต์",this::insertChecklist);noteTool(row,"table","แทรกตาราง","ตาราง",this::insertNoteTable);
         noteTool(row,"underline","ขีดเส้นใต้","เส้นใต้",()->formatNote("underline",0));noteTool(row,"strike","ขีดฆ่า","ขีดฆ่า",()->formatNote("strike",0));
         noteTool(row,"heading","หัวข้อ","หัวข้อ",()->formatNote("size",26));noteTool(row,"size","ขนาดข้อความ","ขนาด",this::noteSize);
         noteTool(row,"color","สีข้อความ","สี",()->noteColor(false));noteTool(row,"highlight","ไฮไลต์ข้อความ","ไฮไลต์",()->noteColor(true));
         noteTool(row,"bullet","รายการหัวข้อ","หัวข้อย่อย",()->prefixNoteLines("• "));noteTool(row,"number","รายการเลขลำดับ","ลำดับ",()->prefixNoteLines("number"));
-        noteTool(row,"check","เช็กลิสต์","เช็กลิสต์",this::insertChecklist);noteTool(row,"table","แทรกตาราง","ตาราง",this::insertNoteTable);
         noteTool(row,"clear","ล้างรูปแบบ","ล้างรูปแบบ",()->formatNote("clear",0));noteTool(row,"find","ค้นหาในโน้ต","ค้นหา",this::findInNote);
     }
     private ReaderIconButton noteTool(LinearLayout row,String symbol,String label,String caption,Runnable action) {
@@ -683,6 +679,7 @@ public class MainActivity extends Activity {
     @Override protected void onPause() {if(pageView!=null) pageView.commitGesture();saveNote(false);super.onPause();}
     @Override protected void onSaveInstanceState(Bundle state) {
         saveNote(false);state.putString("tab",tab);state.putString("filter",filter);state.putString("query",query);state.putBoolean("editor",editor);state.putLong("noteId",noteId);
+        if(editor&&body!=null) {state.putInt("noteStart",body.getSelectionStart());state.putInt("noteEnd",body.getSelectionEnd());state.putInt("noteScroll",noteScroll.getScrollY());}
         state.putLong("pendingAttach",pendingAttach);state.putString("exportId",exportId);state.putString("annotatedExportId",annotatedExportId);
         if(pdf!=null) {state.putBoolean("fullscreen",fullscreen);state.putInt("pdfMode",pageView.getMode());if(textDraft!=null) state.putString("textDraft",TextBox.encode(java.util.Collections.singletonList(textDraft.get())));state.putString("pdfId",pdfId);state.putString("pdfName",pdfName);state.putInt("page",pageIndex);state.putLong("pdfReturnNote",pdfReturnNote);}
         super.onSaveInstanceState(state);

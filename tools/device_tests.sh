@@ -18,6 +18,8 @@ trap collect EXIT
 adb shell settings put secure show_ime_with_hard_keyboard 1
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+# The emulator launcher can ANR during first boot; stop only that unrelated process before UI tests.
+adb shell am force-stop com.google.android.apps.nexuslauncher
 adb shell am instrument -w -e notClass com.notepocket.app.UpdatePersistenceTest,com.notepocket.app.LegacyUpgradeSeedTest,com.notepocket.app.ReleaseUpgradeTest com.notepocket.notes.debug.test/androidx.test.runner.AndroidJUnitRunner | tee qa-output/device-tests.txt
 python3 - <<'PY'
 from pathlib import Path

@@ -7,6 +7,14 @@ import org.json.*;
 /** Lossless note formatting, including colors and sizes unsupported by Android's HTML reader. */
 public final class NoteFormat {
     private NoteFormat() {}
+    public static void toggleStyle(Editable text,int lo,int hi,int bit) {
+        StyleSpan[] spans=text.getSpans(lo,hi,StyleSpan.class);java.util.TreeSet<Integer> edges=new java.util.TreeSet<>();edges.add(lo);edges.add(hi);
+        for(StyleSpan span:spans) {edges.add(Math.max(lo,text.getSpanStart(span)));edges.add(Math.min(hi,text.getSpanEnd(span)));}
+        java.util.List<Integer> points=new java.util.ArrayList<>(edges);int[] styles=new int[points.size()-1];boolean all=true;
+        for(int i=0;i<styles.length;i++) {for(StyleSpan span:spans) if(text.getSpanStart(span)<points.get(i+1)&&text.getSpanEnd(span)>points.get(i)) styles[i]|=span.getStyle();if((styles[i]&bit)==0) all=false;}
+        for(StyleSpan span:spans) {int a=text.getSpanStart(span),b=text.getSpanEnd(span),style=span.getStyle();text.removeSpan(span);if(a<lo) text.setSpan(new StyleSpan(style),a,lo,Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);if(b>hi) text.setSpan(new StyleSpan(style),hi,b,Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);}
+        for(int i=0;i<styles.length;i++) {int style=all?styles[i]&~bit:styles[i]|bit;if(style!=0) text.setSpan(new StyleSpan(style),points.get(i),points.get(i+1),Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);}
+    }
     public static String encode(Spanned text) {
         try {
             JSONObject out=new JSONObject().put("format","NotePocket-rich-1").put("text",text.toString());JSONArray spans=new JSONArray();

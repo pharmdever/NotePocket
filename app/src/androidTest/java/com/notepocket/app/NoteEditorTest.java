@@ -36,6 +36,7 @@ public class NoteEditorTest {
         }finally {context.deleteDatabase("editor-test.db");}
     }
     @Test public void stickyIconToolbarGridUndoReopenAndKeyboardScrolling() throws Exception {
+        androidx.test.espresso.Espresso.setFailureHandler((error,matcher)->{try {screenshot("editor-failure");}catch(Exception ignored) {}new androidx.test.espresso.base.DefaultFailureHandler(context).handle(error,matcher);});
         long id;try(Store store=new Store(context)) {id=store.save(-1,"เครื่องมือโน้ตรุ่นใหม่","Study notes\nแผนทบทวนบทเรียน","","เรียน");}
         try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)) {
             onView(withText("เครื่องมือโน้ตรุ่นใหม่")).perform(click());onView(withHint("เขียนสิ่งที่อยากจดจำ…")).perform(click());
@@ -49,7 +50,7 @@ public class NoteEditorTest {
             onView(withHint("เขียนสิ่งที่อยากจดจำ…")).perform(scrollTo(),click(),replaceText(longText.toString()));
             scenario.onActivity(a->{EditText body=(EditText)find(a.getWindow().getDecorView(),null,"เขียนสิ่งที่อยากจดจำ…");body.requestFocus();body.setSelection(body.length());((android.view.inputmethod.InputMethodManager)a.getSystemService(Context.INPUT_METHOD_SERVICE)).showSoftInput(body,0);});Thread.sleep(1200);
             assertKeyboardAndCursor(scenario);screenshot("08-note-keyboard-sticky");onView(withHint("เขียนสิ่งที่อยากจดจำ…")).perform(closeSoftKeyboard());
-            scenario.onActivity(a->a.setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE));Thread.sleep(800);onView(withHint("เขียนสิ่งที่อยากจดจำ…")).perform(scrollTo(),click());Thread.sleep(800);assertKeyboardAndCursor(scenario);screenshot("09-note-landscape-keyboard");onView(withHint("เขียนสิ่งที่อยากจดจำ…")).perform(closeSoftKeyboard());
+            scenario.onActivity(a->a.setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE));Thread.sleep(800);scenario.onActivity(a->{EditText b=(EditText)find(a.getWindow().getDecorView(),null,"เขียนสิ่งที่อยากจดจำ…");b.requestFocus();b.setSelection(b.length());b.append("บรรทัดสุดท้าย");((android.view.inputmethod.InputMethodManager)a.getSystemService(Context.INPUT_METHOD_SERVICE)).showSoftInput(b,0);});Thread.sleep(1000);assertKeyboardAndCursor(scenario);screenshot("09-note-landscape-keyboard");onView(withHint("เขียนสิ่งที่อยากจดจำ…")).perform(closeSoftKeyboard());
         }
         try(Store store=new Store(context)) {List<NoteTable> tables=NoteTable.decode(store.note(id).getAsString("tables"));assertEquals(4,tables.get(0).cells.size());assertEquals("รายการ",tables.get(0).cells.get(0).get(0));assertEquals("ทบทวนบทเรียน",tables.get(0).cells.get(1).get(0));}
     }

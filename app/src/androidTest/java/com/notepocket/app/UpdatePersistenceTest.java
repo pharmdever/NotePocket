@@ -15,6 +15,8 @@ public class UpdatePersistenceTest {
         Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();
         assertEquals(7,context.getPackageManager().getPackageInfo(context.getPackageName(),0).versionCode);
         try(Store store=new Store(context)) {
+            ContentValues editorNote=store.query("SELECT * FROM notes WHERE title=?","Note editor upgrade fixture").get(0);
+            assertEquals("ตารางก่อนอัปเดต",NoteTable.decode(editorNote.getAsString("tables")).get(0).cells.get(0).get(0));android.text.SpannableStringBuilder rich=NoteFormat.decode(editorNote.getAsString("rich"),editorNote.getAsString("body"));assertEquals(26,rich.getSpans(0,rich.length(),android.text.style.AbsoluteSizeSpan.class)[0].getSize());assertEquals(0xffD12D39,rich.getSpans(0,rich.length(),android.text.style.ForegroundColorSpan.class)[0].getForegroundColor());
             ContentValues note=store.query("SELECT * FROM notes WHERE title=?","ทบทวนบทเรียน").get(0);
             assertTrue(note.getAsString("body").contains("สรุปจากเอกสาร"));
             String id=store.attachments(note.getAsLong("id")).get(0).getAsString("id");assertTrue(new File(context.getFilesDir(),id).length()>0);
