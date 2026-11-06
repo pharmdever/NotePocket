@@ -73,7 +73,7 @@ public class MainActivity extends Activity {
     private ProgressDialog progress;
 
     @Override public void onCreate(Bundle state) {
-        super.onCreate(state);store=new Store(getApplicationContext());store.getWritableDatabase();
+        super.onCreate(state);if(Build.VERSION.SDK_INT>=29) {android.view.contentcapture.ContentCaptureManager capture=getSystemService(android.view.contentcapture.ContentCaptureManager.class);if(capture!=null) capture.setContentCaptureEnabled(false);}store=new Store(getApplicationContext());store.getWritableDatabase();
         if(state!=null) {
             tab=state.getString("tab","notes");filter=state.getString("filter","all");query=state.getString("query","");
             pendingAttach=state.getLong("pendingAttach",-1);exportId=state.getString("exportId");annotatedExportId=state.getString("annotatedExportId");
@@ -115,7 +115,7 @@ public class MainActivity extends Activity {
     }
     /** Note fields are documents, not autofill forms. NO alone is advisory on Android 15. */
     private static final class PocketInput extends EditText {
-        PocketInput(Context context) {super(context);setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO);if(Build.VERSION.SDK_INT>=29) setImportantForContentCapture(View.IMPORTANT_FOR_CONTENT_CAPTURE_NO);}
+        PocketInput(Context context) {super(context);setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO);if(Build.VERSION.SDK_INT>=30) setImportantForContentCapture(View.IMPORTANT_FOR_CONTENT_CAPTURE_NO);}
         @Override public int getAutofillType() {return View.AUTOFILL_TYPE_NONE;}
         @Override public android.view.autofill.AutofillValue getAutofillValue() {return null;}
     }
@@ -204,7 +204,7 @@ public class MainActivity extends Activity {
         closePdf();pdfReturnNote=-1;editor=false;loading=true;noteId=id;dirty=false;
         ContentValues note=id<0?null:store.note(id);
         if(id>=0&&(note==null||note.getAsInteger("deleted")==1)) {home();toast("ไม่พบโน้ตนี้");return;}
-        folder=note==null?(filter.startsWith("folder:")?filter.substring(7):"ทั่วไป"):note.getAsString("folder");soapDraft=note==null?new SoapDraft():new SoapDraft(note.getAsString("soap"));screen();root.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);if(Build.VERSION.SDK_INT>=29) root.setImportantForContentCapture(View.IMPORTANT_FOR_CONTENT_CAPTURE_NO_EXCLUDE_DESCENDANTS);
+        folder=note==null?(filter.startsWith("folder:")?filter.substring(7):"ทั่วไป"):note.getAsString("folder");soapDraft=note==null?new SoapDraft():new SoapDraft(note.getAsString("soap"));screen();root.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);if(Build.VERSION.SDK_INT>=30) root.setImportantForContentCapture(View.IMPORTANT_FOR_CONTENT_CAPTURE_NO_EXCLUDE_DESCENDANTS);
         noteHistory=new NoteHistory();noteToolIcons.clear();tables=note==null?new ArrayList<>():NoteTable.decode(note.getAsString("tables"));
         noteHeader=horizontal(root);noteHeader.addView(icon("back","กลับจากโน้ต",null,()->{if(saveNote(false)) {keyboardOff();home();}}),new LinearLayout.LayoutParams(dp(48),dp(48)));
         TextView heading=strong("เขียนโน้ต",20);noteHeader.addView(heading,new LinearLayout.LayoutParams(0,-2,1));
