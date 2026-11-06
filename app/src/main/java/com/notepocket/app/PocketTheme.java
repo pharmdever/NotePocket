@@ -7,7 +7,7 @@ import android.graphics.drawable.*;
 
 /** Shared colors and interactive surfaces for the native app and dialogs. */
 public final class PocketTheme {
-    public static final int FOREST=0xff245849,INK=0xff203D34,MUTED=0xff64746C,CREAM=0xffF8F6F0,SURFACE=0xffFFFEFA,LINE=0xffDFE5D9;
+    public static final int FOREST=0xff245849,INK=0xff203D34,MUTED=0xff59685F,CREAM=0xffF8F6F0,SURFACE=0xffFFFEFA,LINE=0xffDFE5D9;
     public static final int SAGE=0xffE4EDDE,LAVENDER=0xffEDE7F4,PEACH=0xffF8E7DA,BUTTER=0xffF5EDCE,RED=0xffA13E36;
     public static final int[] NOTES={SAGE,BUTTER,LAVENDER,PEACH};
     private PocketTheme() {}

@@ -5,7 +5,7 @@
         <item name="android:colorControlActivated">#245849</item>
         <item name="android:colorBackground">#F8F6F0</item>
         <item name="android:textColorPrimary">#203D34</item>
-        <item name="android:textColorSecondary">#64746C</item>
+        <item name="android:textColorSecondary">#59685F</item>
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:statusBarColor">#F8F6F0</item>
         <item name="android:navigationBarColor">#F8F6F0</item>
@@ -21,7 +21,7 @@
         <item name="android:colorAccent">#245849</item>
         <item name="android:colorBackground">#FFFEFA</item>
         <item name="android:textColorPrimary">#203D34</item>
-        <item name="android:textColorSecondary">#64746C</item>
+        <item name="android:textColorSecondary">#59685F</item>
         <item name="android:windowBackground">@drawable/dialog_surface</item>
         <item name="android:backgroundDimAmount">0.35</item>
         <item name="android:windowMinWidthMinor">92%</item>
