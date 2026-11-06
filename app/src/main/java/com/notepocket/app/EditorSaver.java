@@ -15,7 +15,7 @@ public final class EditorSaver implements AutoCloseable {
     public synchronized long offer(NoteSnapshot snapshot) {if(closed) throw new IllegalStateException("Saver closed");long next=++ticket;pending=new Work(next,snapshot);if(!running) {running=true;worker.execute(this::drain);}return next;}
     private void drain() {
         while(true) {Work work;synchronized(this) {work=pending;pending=null;if(work==null) {running=false;notifyAll();return;}}
-            Exception failure=null;try {noteId=store.saveSnapshot(noteId,work.snapshot);}catch(Exception e) {failure=e;}
+            Exception failure=null;try {noteId=store.saveSnapshot(noteId,work.snapshot);}catch(Exception e) {failure=e;}catch(OutOfMemoryError e) {failure=new IllegalStateException("Not enough memory to save this note",e);}
             Exception result=failure;long saved=noteId;synchronized(this) {lastFailure=failure;completedTicket=work.ticket;notifyAll();}
             main.post(()->{if(listener!=null) listener.completed(work.snapshot.revision,saved,result);});
         }

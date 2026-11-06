@@ -4,7 +4,7 @@ mkdir -p qa-output
 collect() {
   adb pull /sdcard/Android/data/com.notepocket.notes.debug/files/screenshots qa-output/screenshots || true
   adb pull /sdcard/Android/data/com.notepocket.notes.debug/files/performance.json qa-output/performance.json || true
-  adb logcat -d -t 200 > qa-output/logcat.txt || true
+  adb logcat -d > qa-output/logcat.txt || true
   python3 - <<'PYSCREEN'
 from pathlib import Path
 import base64
@@ -18,6 +18,7 @@ for image in sorted(Path('qa-output/screenshots').glob('*.png')):
 PYSCREEN
 }
 trap collect EXIT
+adb logcat -c
 adb shell settings put secure show_ime_with_hard_keyboard 1
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk

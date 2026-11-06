@@ -114,7 +114,7 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.setMargins(0,dp(6),0,dp(6));parent.addView(c,p);return c;
     }
     private EditText input(String hint,boolean single) {
-        EditText e=new EditText(this);e.setHint(hint);e.setTextColor(INK);e.setHintTextColor(MUTED);e.setTextSize(17);e.setSingleLine(single);e.setMinHeight(dp(52));e.setPadding(dp(14),dp(12),dp(14),dp(12));e.setBackground(PocketTheme.field(this));return e;
+        EditText e=new EditText(this);e.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO);e.setHint(hint);e.setTextColor(INK);e.setHintTextColor(MUTED);e.setTextSize(17);e.setSingleLine(single);e.setMinHeight(dp(52));e.setPadding(dp(14),dp(12),dp(14),dp(12));e.setBackground(PocketTheme.field(this));return e;
     }
     private void toast(String s) { Toast.makeText(this,s,Toast.LENGTH_LONG).show(); }
     private void keyboardOff() { ((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(root.getWindowToken(),0); }
@@ -198,7 +198,7 @@ public class MainActivity extends Activity {
         closePdf();pdfReturnNote=-1;editor=false;loading=true;noteId=id;dirty=false;
         ContentValues note=id<0?null:store.note(id);
         if(id>=0&&(note==null||note.getAsInteger("deleted")==1)) {home();toast("ไม่พบโน้ตนี้");return;}
-        folder=note==null?(filter.startsWith("folder:")?filter.substring(7):"ทั่วไป"):note.getAsString("folder");soapDraft=note==null?new SoapDraft():new SoapDraft(note.getAsString("soap"));screen();
+        folder=note==null?(filter.startsWith("folder:")?filter.substring(7):"ทั่วไป"):note.getAsString("folder");soapDraft=note==null?new SoapDraft():new SoapDraft(note.getAsString("soap"));screen();root.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
         noteHistory=new NoteHistory();noteToolIcons.clear();tables=note==null?new ArrayList<>():NoteTable.decode(note.getAsString("tables"));
         noteHeader=horizontal(root);noteHeader.addView(icon("back","กลับจากโน้ต",null,()->{if(saveNote(false)) {keyboardOff();home();}}),new LinearLayout.LayoutParams(dp(48),dp(48)));
         TextView heading=strong("เขียนโน้ต",20);noteHeader.addView(heading,new LinearLayout.LayoutParams(0,-2,1));
