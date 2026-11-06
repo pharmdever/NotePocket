@@ -24,6 +24,13 @@ public class MainActivity extends Activity {
     private Store store;
     private LinearLayout root,list,attachments;
     private EditText title,body;
+    private LinearLayout noteHeader,noteToolbar,noteTables;
+    private ScrollView noteScroll;
+    private TextView noteToolStatus;
+    private ReaderIconButton noteUndo,noteRedo;
+    private List<NoteTable> tables=new ArrayList<>();
+    private NoteHistory noteHistory=new NoteHistory();
+    private final Map<String,ReaderIconButton> noteToolIcons=new HashMap<>();
     private TextView savedLabel,pageLabel,bookmarkButton,inkStatus;
     private Button readMode,penMode,highlightMode;
     private String annotatedExportId;
@@ -145,8 +152,8 @@ public class MainActivity extends Activity {
         String clause=filter.equals("trash")?"deleted=1":"deleted=0";
         if(filter.equals("pinned")) clause+=" AND pinned=1";
         List<ContentValues> rows;
-        if(!Arrays.asList("all","trash","pinned").contains(filter)) rows=store.query("SELECT * FROM notes WHERE "+clause+" AND folder=? AND (title LIKE ? ESCAPE '\\' OR body LIKE ? ESCAPE '\\') ORDER BY pinned DESC,updated DESC",filter,match,match);
-        else rows=store.query("SELECT * FROM notes WHERE "+clause+" AND (title LIKE ? ESCAPE '\\' OR body LIKE ? ESCAPE '\\') ORDER BY pinned DESC,updated DESC",match,match);
+        if(!Arrays.asList("all","trash","pinned").contains(filter)) rows=store.query("SELECT * FROM notes WHERE "+clause+" AND folder=? AND (title LIKE ? ESCAPE '\\' OR body LIKE ? ESCAPE '\\' OR tables LIKE ? ESCAPE '\\') ORDER BY pinned DESC,updated DESC",filter,match,match,match);
+        else rows=store.query("SELECT * FROM notes WHERE "+clause+" AND (title LIKE ? ESCAPE '\\' OR body LIKE ? ESCAPE '\\' OR tables LIKE ? ESCAPE '\\') ORDER BY pinned DESC,updated DESC",match,match,match);
         list.addView(text(rows.size()+" โน้ต"+(filter.equals("trash")?"ในถังขยะ":""),13,MUTED));
         for(ContentValues note:rows) {
             long id=note.getAsLong("id");boolean deleted=note.getAsInteger("deleted")==1;
@@ -179,30 +186,38 @@ public class MainActivity extends Activity {
         ContentValues note=id<0?null:store.note(id);
         if(id>=0&&(note==null||note.getAsInteger("deleted")==1)) {home();toast("ไม่พบโน้ตนี้");return;}
         folder=note==null?"ทั่วไป":note.getAsString("folder");screen();
-        titleBar("เขียนโน้ต",() -> {if(saveNote(false)) {keyboardOff();home();}});
-        LinearLayout tools=horizontal(root);
-        action(tools,"แนบไฟล์",this::attachmentMenu,false);
-        action(tools,"โฟลเดอร์",this::chooseFolder,false);
-        action(tools,"แชร์",() -> {
-            if(!saveNote(false)) return;
-            Intent i=new Intent(Intent.ACTION_SEND);i.setType("text/plain");i.putExtra(Intent.EXTRA_TEXT,title.getText()+"\n\n"+body.getText());startActivity(Intent.createChooser(i,"แชร์ข้อความโน้ต"));
-        },false);
-        savedLabel=text("บันทึกอัตโนมัติ  ·  "+folder,12,MUTED);root.addView(savedLabel);gap(root,8);
-        LinearLayout page=scroll(root,1);
+        noteHistory=new NoteHistory();noteToolIcons.clear();tables=note==null?new ArrayList<>():NoteTable.decode(note.getAsString("tables"));
+        noteHeader=horizontal(root);noteHeader.addView(icon("back","กลับจากโน้ต",null,()->{if(saveNote(false)) {keyboardOff();home();}}),new LinearLayout.LayoutParams(dp(48),dp(48)));
+        TextView heading=strong("เขียนโน้ต",20);noteHeader.addView(heading,new LinearLayout.LayoutParams(0,-2,1));
+        noteHeader.addView(icon("attach","แนบไฟล์",null,this::attachmentMenu),new LinearLayout.LayoutParams(dp(48),dp(48)));
+        noteHeader.addView(icon("folder","โฟลเดอร์",null,this::chooseFolder),new LinearLayout.LayoutParams(dp(48),dp(48)));
+        noteHeader.addView(icon("share","แชร์",null,this::shareNote),new LinearLayout.LayoutParams(dp(48),dp(48)));
+        savedLabel=text("บันทึกอัตโนมัติ  ·  "+folder,12,MUTED);root.addView(savedLabel);
+        noteScroll=new ScrollView(this);noteScroll.setFillViewport(true);LinearLayout page=vertical();noteScroll.addView(page);root.addView(noteScroll,new LinearLayout.LayoutParams(-1,0,1));
         title=input("ชื่อโน้ต",true);title.setTextSize(25);title.setTypeface(null,Typeface.BOLD);page.addView(title);gap(page,10);
-        LinearLayout format=horizontal(page);
-        action(format,"ตัวหนา",() -> style(Typeface.BOLD),false);action(format,"เอียง",() -> style(Typeface.ITALIC),false);
-        action(format,"☐ รายการ",() -> insertChecklist(),false);
-        body=input("เขียนสิ่งที่อยากจดจำ…",false);body.setSingleLine(false);body.setGravity(Gravity.TOP);body.setMinHeight(dp(280));body.setTextSize(18);body.setTypeface(Fonts.typeface(this,readerPrefs().getString("font","sans")));
+        body=input("เขียนสิ่งที่อยากจดจำ…",false);body.setSingleLine(false);body.setImeOptions(android.view.inputmethod.EditorInfo.IME_FLAG_NO_EXTRACT_UI);body.setGravity(Gravity.TOP);body.setMinHeight(dp(280));body.setTextSize(18);body.setTypeface(Fonts.typeface(this,readerPrefs().getString("font","sans")));
         body.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE|android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
         page.addView(body,new LinearLayout.LayoutParams(-1,-2));gap(page,12);
+        noteTables=vertical();page.addView(noteTables);renderNoteTables();
         page.addView(strong("ไฟล์แนบ",16));attachments=vertical();page.addView(attachments);
-        if(note!=null) {title.setText(note.getAsString("title"));String rich=note.getAsString("rich");if(rich.isEmpty()) body.setText(note.getAsString("body"));else {
-            Spanned formatted=Html.fromHtml(rich,Html.FROM_HTML_MODE_LEGACY);String plain=note.getAsString("body");
-            body.setText(formatted.toString().startsWith(plain)?formatted.subSequence(0,plain.length()):formatted);
-        }}
-        editor=true;loading=false;refreshAttachments();
-        TextWatcher change=watcher(this::changed);title.addTextChangedListener(change);body.addTextChangedListener(change);
+        if(note!=null) {title.setText(note.getAsString("title"));body.setText(NoteFormat.decode(note.getAsString("rich"),note.getAsString("body")));}
+        createNoteToolbar();editor=true;loading=false;refreshAttachments();
+        TextWatcher change=new TextWatcher() {
+            public void beforeTextChanged(CharSequence value,int start,int count,int after) {rememberNote(true);}
+            public void onTextChanged(CharSequence value,int start,int before,int count) {changed();}
+            public void afterTextChanged(Editable value) {updateNoteTools();followNoteCursor();}
+        };title.addTextChangedListener(change);body.addTextChangedListener(change);
+        body.setCustomSelectionActionModeCallback(new ActionMode.Callback() {public boolean onCreateActionMode(ActionMode m,Menu menu) {return true;}public boolean onPrepareActionMode(ActionMode m,Menu menu) {updateNoteTools();return false;}public boolean onActionItemClicked(ActionMode m,MenuItem item) {return false;}public void onDestroyActionMode(ActionMode m) {handler.post(MainActivity.this::updateNoteTools);}});
+        root.setOnApplyWindowInsetsListener((view,insets)->{
+            int bottom=insets.getSystemWindowInsetBottom();boolean keyboard=false;
+            if(android.os.Build.VERSION.SDK_INT>=30) {bottom=Math.max(insets.getInsets(WindowInsets.Type.ime()).bottom,insets.getInsets(WindowInsets.Type.systemBars()).bottom);keyboard=insets.isVisible(WindowInsets.Type.ime());}
+            else keyboard=bottom>dp(100);
+            view.setPadding(dp(10),insets.getSystemWindowInsetTop()+dp(4),dp(10),bottom+dp(4));
+            boolean landscape=getResources().getConfiguration().orientation==android.content.res.Configuration.ORIENTATION_LANDSCAPE;
+            noteHeader.setVisibility(keyboard&&landscape?View.GONE:View.VISIBLE);savedLabel.setVisibility(keyboard?View.GONE:View.VISIBLE);
+            if(noteToolStatus!=null) noteToolStatus.setVisibility(keyboard&&landscape?View.GONE:View.VISIBLE);
+            followNoteCursor();return insets;
+        });root.requestApplyInsets();updateNoteTools();
         root.setFocusableInTouchMode(true);root.requestFocus();
     }
     private void changed() {
@@ -214,29 +229,130 @@ public class MainActivity extends Activity {
         if(!editor||title==null||body==null) return true;
         if(!dirty&&noteId>=0) return true;
         String t=title.getText().toString(),b=body.getText().toString();
-        if(noteId<0&&!force&&t.trim().isEmpty()&&b.trim().isEmpty()) return true;
+        if(noteId<0&&!force&&t.trim().isEmpty()&&b.trim().isEmpty()&&tables.isEmpty()) return true;
         try {
-            noteId=store.save(noteId,t,b,Html.toHtml(body.getText(),Html.TO_HTML_PARAGRAPH_LINES_CONSECUTIVE),folder);dirty=false;
+            noteId=store.save(noteId,t,b,NoteFormat.encode(body.getText()),folder,NoteTable.encode(tables));dirty=false;
             savedLabel.setText("บันทึกแล้ว  ·  "+folder);return true;
         } catch(Exception e) {savedLabel.setText("บันทึกไม่สำเร็จ — ตรวจสอบพื้นที่ว่าง");toast("ยังบันทึกไม่ได้ กรุณาอย่าเพิ่งปิดโน้ต");return false;}
     }
     private void style(int type) {
         int start=body.getSelectionStart(),end=body.getSelectionEnd();
-        if(start<0||start==end) {toast("เลือกข้อความที่ต้องการจัดรูปแบบก่อน");body.requestFocus();return;}
-        int lo=Math.min(start,end),hi=Math.max(start,end);Editable e=body.getText();boolean removed=false;
+        if(!body.hasFocus()||start<0||start==end) {toast("เลือกข้อความที่ต้องการจัดรูปแบบก่อน");body.requestFocus();return;}
+        rememberNote(false);int lo=Math.min(start,end),hi=Math.max(start,end);Editable e=body.getText();boolean removed=false;
         for(StyleSpan span:e.getSpans(lo,hi,StyleSpan.class)) if(span.getStyle()==type&&e.getSpanStart(span)<=lo&&e.getSpanEnd(span)>=hi) {
             int a=e.getSpanStart(span),b=e.getSpanEnd(span);e.removeSpan(span);
             if(a<lo) e.setSpan(new StyleSpan(type),a,lo,Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
             if(b>hi) e.setSpan(new StyleSpan(type),hi,b,Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);removed=true;
         }
-        if(!removed) e.setSpan(new StyleSpan(type),lo,hi,Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);changed();
+        if(!removed) e.setSpan(new StyleSpan(type),lo,hi,Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);changed();updateNoteTools();
     }
     private void insertChecklist() {
-        int cursor=Math.max(0,body.getSelectionStart());Editable e=body.getText();int start=e.toString().lastIndexOf('\n',Math.max(-1,cursor-1))+1;
+        body.requestFocus();int cursor=Math.max(0,body.getSelectionStart());Editable e=body.getText();int start=e.toString().lastIndexOf('\n',Math.max(-1,cursor-1))+1;
         String prefix=e.subSequence(start,Math.min(e.length(),start+2)).toString();
         if(prefix.equals("☐ ")) e.replace(start,start+2,"☑ ");else if(prefix.equals("☑ ")) e.replace(start,start+2,"☐ ");else e.insert(start,"☐ ");
         body.requestFocus();
     }
+    private void shareNote() {
+        if(!saveNote(false)) return;Intent intent=new Intent(Intent.ACTION_SEND);intent.setType("text/plain");intent.putExtra(Intent.EXTRA_TEXT,title.getText()+"\n\n"+body.getText()+NoteTable.plain(tables));startActivity(Intent.createChooser(intent,"แชร์ข้อความโน้ต"));
+    }
+    private NoteHistory.State noteState() {return new NoteHistory.State(title.getText().toString(),NoteFormat.encode(body.getText()),NoteTable.encode(tables),body.getSelectionStart(),body.getSelectionEnd());}
+    private void rememberNote(boolean typing) {if(editor&&!loading&&body!=null) noteHistory.remember(noteState(),typing);}
+    private void restoreNoteHistory(boolean redo) {
+        NoteHistory.State state=redo?noteHistory.redo(noteState()):noteHistory.undo(noteState());if(state==null) return;
+        loading=true;title.setText(state.title);body.setText(NoteFormat.decode(state.rich,""));tables=NoteTable.decode(state.tables);renderNoteTables();
+        body.setSelection(Math.max(0,Math.min(state.start,body.length())),Math.max(0,Math.min(state.end,body.length())));loading=false;changed();updateNoteTools();body.requestFocus();followNoteCursor();
+    }
+    private void createNoteToolbar() {
+        noteToolbar=vertical();noteToolbar.setBackground(background(Color.WHITE,16));noteToolbar.setPadding(dp(4),dp(3),dp(4),dp(3));noteToolbar.setElevation(dp(6));root.addView(noteToolbar,new LinearLayout.LayoutParams(-1,-2));
+        LinearLayout status=horizontal(noteToolbar);noteToolStatus=text("เลือกข้อความเพื่อจัดรูปแบบ · เลื่อนเครื่องมือ ↔",12,MUTED);noteToolStatus.setSingleLine();status.addView(noteToolStatus,new LinearLayout.LayoutParams(0,-2,1));
+        HorizontalScrollView scroll=new HorizontalScrollView(this);scroll.setHorizontalScrollBarEnabled(true);scroll.setHorizontalFadingEdgeEnabled(true);LinearLayout row=horizontal(null);scroll.addView(row);noteToolbar.addView(scroll,new LinearLayout.LayoutParams(-1,dp(58)));
+        noteUndo=noteTool(row,"undo","ย้อนกลับข้อความ","ย้อนกลับ",()->restoreNoteHistory(false));noteRedo=noteTool(row,"redo","ทำซ้ำข้อความ","ทำซ้ำ",()->restoreNoteHistory(true));
+        noteTool(row,"bold","ตัวหนา","หนา",()->style(Typeface.BOLD));noteTool(row,"italic","ตัวเอียง","เอียง",()->style(Typeface.ITALIC));
+        noteTool(row,"underline","ขีดเส้นใต้","เส้นใต้",()->formatNote("underline",0));noteTool(row,"strike","ขีดฆ่า","ขีดฆ่า",()->formatNote("strike",0));
+        noteTool(row,"heading","หัวข้อ","หัวข้อ",()->formatNote("size",26));noteTool(row,"size","ขนาดข้อความ","ขนาด",this::noteSize);
+        noteTool(row,"color","สีข้อความ","สี",()->noteColor(false));noteTool(row,"highlight","ไฮไลต์ข้อความ","ไฮไลต์",()->noteColor(true));
+        noteTool(row,"bullet","รายการหัวข้อ","หัวข้อย่อย",()->prefixNoteLines("• "));noteTool(row,"number","รายการเลขลำดับ","ลำดับ",()->prefixNoteLines("number"));
+        noteTool(row,"check","เช็กลิสต์","เช็กลิสต์",this::insertChecklist);noteTool(row,"table","แทรกตาราง","ตาราง",this::insertNoteTable);
+        noteTool(row,"clear","ล้างรูปแบบ","ล้างรูปแบบ",()->formatNote("clear",0));noteTool(row,"find","ค้นหาในโน้ต","ค้นหา",this::findInNote);
+    }
+    private ReaderIconButton noteTool(LinearLayout row,String symbol,String label,String caption,Runnable action) {
+        ReaderIconButton button=icon(symbol,label,caption,()->{noteToolStatus.setText(label);action.run();updateNoteTools();});row.addView(button,new LinearLayout.LayoutParams(dp(64),dp(58)));noteToolIcons.put(symbol,button);return button;
+    }
+    private void updateNoteTools() {
+        if(!editor||body==null||noteUndo==null) return;noteUndo.setEnabled(noteHistory.canUndo());noteRedo.setEnabled(noteHistory.canRedo());
+        int start=Math.max(0,Math.min(body.getSelectionStart(),body.getSelectionEnd())),end=Math.max(start,Math.max(body.getSelectionStart(),body.getSelectionEnd()));
+        for(String key:new String[]{"bold","italic","underline","strike","color","highlight","heading"}) {ReaderIconButton icon=noteToolIcons.get(key);if(icon!=null) icon.setSelected(false);}
+        if(end<=start) return;Editable text=body.getText();for(Object span:text.getSpans(start,end,Object.class)) {if(text.getSpanStart(span)>start||text.getSpanEnd(span)<end) continue;String key=null;
+            if(span instanceof StyleSpan) {int style=((StyleSpan)span).getStyle();if((style&Typeface.BOLD)!=0) noteToolIcons.get("bold").setSelected(true);if((style&Typeface.ITALIC)!=0) noteToolIcons.get("italic").setSelected(true);}
+            else if(span instanceof UnderlineSpan) key="underline";else if(span instanceof StrikethroughSpan) key="strike";else if(span instanceof ForegroundColorSpan) key="color";else if(span instanceof BackgroundColorSpan) key="highlight";else if(span instanceof AbsoluteSizeSpan&&((AbsoluteSizeSpan)span).getSize()==26) key="heading";
+            if(key!=null) noteToolIcons.get(key).setSelected(true);
+        }
+    }
+    private int[] noteSelection() {int start=body.getSelectionStart(),end=body.getSelectionEnd();if(!body.hasFocus()||start<0||start==end) {toast("เลือกข้อความในเนื้อหาโน้ตก่อน แล้วแตะเครื่องมือที่ต้องการ");return null;}return new int[]{Math.min(start,end),Math.max(start,end)};}
+    private void formatNote(String type,int value) {
+        int[] range=noteSelection();if(range==null) return;rememberNote(false);Editable text=body.getText();Object replacement=null;Class<?> kind;
+        switch(type) {case "underline":kind=UnderlineSpan.class;replacement=new UnderlineSpan();break;case "strike":kind=StrikethroughSpan.class;replacement=new StrikethroughSpan();break;case "color":kind=ForegroundColorSpan.class;replacement=new ForegroundColorSpan(value);break;case "highlight":kind=BackgroundColorSpan.class;if(value!=0) replacement=new BackgroundColorSpan(value);break;case "size":kind=AbsoluteSizeSpan.class;replacement=new AbsoluteSizeSpan(value,true);break;default:kind=CharacterStyle.class;}
+        boolean covered=false;for(Object span:text.getSpans(range[0],range[1],kind)) {int a=text.getSpanStart(span),b=text.getSpanEnd(span);if(a<=range[0]&&b>=range[1]) covered=true;text.removeSpan(span);
+            if(span instanceof CharacterStyle) {if(a<range[0]) text.setSpan(copyNoteStyle((CharacterStyle)span),a,range[0],Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);if(b>range[1]) text.setSpan(copyNoteStyle((CharacterStyle)span),range[1],b,Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);}
+        }
+        if(replacement!=null&&(!covered||(!type.equals("underline")&&!type.equals("strike")))) text.setSpan(replacement,range[0],range[1],Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        changed();updateNoteTools();
+    }
+    private CharacterStyle copyNoteStyle(CharacterStyle style) {
+        CharacterStyle span=style.getUnderlying();
+        if(span instanceof StyleSpan) return new StyleSpan(((StyleSpan)span).getStyle());
+        if(span instanceof UnderlineSpan) return new UnderlineSpan();if(span instanceof StrikethroughSpan) return new StrikethroughSpan();
+        if(span instanceof ForegroundColorSpan) return new ForegroundColorSpan(((ForegroundColorSpan)span).getForegroundColor());
+        if(span instanceof BackgroundColorSpan) return new BackgroundColorSpan(((BackgroundColorSpan)span).getBackgroundColor());
+        if(span instanceof AbsoluteSizeSpan) return new AbsoluteSizeSpan(((AbsoluteSizeSpan)span).getSize(),((AbsoluteSizeSpan)span).getDip());
+        if(span instanceof RelativeSizeSpan) return new RelativeSizeSpan(((RelativeSizeSpan)span).getSizeChange());
+        return CharacterStyle.wrap(span);
+    }
+    private void noteSize() {if(noteSelection()==null) return;String[] labels={"เล็ก 14","ปกติ 18","กลาง 22","หัวข้อ 26","ใหญ่ 32"};int[] sizes={14,18,22,26,32};new AlertDialog.Builder(this).setTitle("ขนาดข้อความที่เลือก").setItems(labels,(d,i)->formatNote("size",sizes[i])).show();}
+    private void noteColor(boolean highlight) {
+        if(noteSelection()==null) return;int[] colors=highlight?new int[]{0xffFFF19A,0xffC3E8C5,0xffFFC8DF,0xffBFE7F7,0}:new int[]{INK,0xff216B58,0xff245BCC,0xffD12D39,0xff7B3FB0};
+        String[] labels=highlight?new String[]{"เหลือง","เขียว","ชมพู","ฟ้า","ลบไฮไลต์"}:new String[]{"ดำ","เขียว","น้ำเงิน","แดง","ม่วง"};
+        new AlertDialog.Builder(this).setTitle(highlight?"สีไฮไลต์ข้อความ":"สีข้อความที่เลือก").setItems(labels,(d,i)->formatNote(highlight?"highlight":"color",colors[i])).show();
+    }
+    private void prefixNoteLines(String prefix) {
+        if(!body.hasFocus()) body.requestFocus();Editable text=body.getText();int lo=Math.max(0,Math.min(body.getSelectionStart(),body.getSelectionEnd())),hi=Math.max(lo,Math.max(body.getSelectionStart(),body.getSelectionEnd()));
+        int start=text.toString().lastIndexOf('\n',lo-1)+1,end=text.toString().indexOf('\n',Math.max(start,hi>lo?hi-1:hi));if(end<0) end=text.length();String[] lines=text.subSequence(start,end).toString().split("\n",-1);rememberNote(false);loading=true;
+        // Insert at line starts instead of replacing the text, preserving existing rich spans.
+        int offset=start;for(int i=0;i<lines.length;i++) {String added=prefix.equals("number")?(i+1)+". ":prefix;text.insert(offset,added);offset+=added.length()+lines[i].length()+1;}
+        loading=false;changed();updateNoteTools();followNoteCursor();
+    }
+    private void followNoteCursor() {
+        if(!editor||noteScroll==null||body==null) return;
+        handler.post(()->{if(!editor||body==null||!body.hasFocus()||body.getLayout()==null) return;int cursor=Math.max(0,body.getSelectionEnd());android.text.Layout layout=body.getLayout();int line=layout.getLineForOffset(Math.min(cursor,body.length()));android.graphics.Rect rect=new android.graphics.Rect(0,layout.getLineTop(line)+body.getTotalPaddingTop(),body.getWidth(),layout.getLineBottom(line)+body.getTotalPaddingTop()+dp(24));body.requestRectangleOnScreen(rect,false);});
+    }
+    private void findInNote() {
+        EditText field=input("ข้อความที่ต้องการหา",true);new AlertDialog.Builder(this).setTitle("ค้นหาในโน้ต").setView(field).setNegativeButton("ยกเลิก",null).setPositiveButton("ค้นหาถัดไป",(d,w)->{String term=field.getText().toString();if(term.isEmpty()) return;String text=body.getText().toString();int start=Math.max(0,body.getSelectionEnd());int index=text.toLowerCase(Locale.ROOT).indexOf(term.toLowerCase(Locale.ROOT),start);if(index<0) index=text.toLowerCase(Locale.ROOT).indexOf(term.toLowerCase(Locale.ROOT));if(index<0) toast("ไม่พบข้อความนี้ในเนื้อหาโน้ต");else {body.requestFocus();body.setSelection(index,index+term.length());followNoteCursor();}}).show();
+    }
+    private void insertNoteTable() {
+        if(tables.size()>=NoteTable.MAX_TABLES) {toast("เพิ่มได้สูงสุด 10 ตารางต่อโน้ต");return;}LinearLayout form=vertical();form.setPadding(dp(18),dp(8),dp(18),dp(8));form.addView(text("แทรกตารางต่อจากเนื้อหาโน้ต · เลื่อนตารางซ้าย–ขวาได้",14,MUTED));
+        Spinner rows=new Spinner(this,Spinner.MODE_DIALOG),cols=new Spinner(this,Spinner.MODE_DIALOG);String[] counts={"1","2","3","4","5","6","7","8"};rows.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,counts));cols.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,counts));rows.setSelection(2);cols.setSelection(2);rows.setContentDescription("จำนวนแถว");cols.setContentDescription("จำนวนคอลัมน์");form.addView(text("แถว",14,INK));form.addView(rows);form.addView(text("คอลัมน์",14,INK));form.addView(cols);
+        new AlertDialog.Builder(this).setTitle("สร้างตาราง").setView(form).setNegativeButton("ยกเลิก",null).setPositiveButton("แทรก",(d,w)->{rememberNote(false);NoteTable table=new NoteTable(rows.getSelectedItemPosition()+1,cols.getSelectedItemPosition()+1);tables.add(table);renderNoteTables();changed();updateNoteTools();handler.post(()->{View first=noteTables.findViewWithTag(table.id+":0:0");if(first!=null) {first.requestFocus();first.requestRectangleOnScreen(new Rect(0,0,first.getWidth(),first.getHeight()),false);((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).showSoftInput(first,InputMethodManager.SHOW_IMPLICIT);}});}).show();
+    }
+    private void renderNoteTables() {
+        if(noteTables==null) return;noteTables.removeAllViews();
+        for(int index=0;index<tables.size();index++) {NoteTable table=tables.get(index);final int number=index+1;LinearLayout panel=card(noteTables);LinearLayout top=horizontal(panel);top.addView(strong("ตาราง "+number+" · "+table.cells.size()+" × "+table.columns(),16),new LinearLayout.LayoutParams(0,-2,1));top.addView(icon("more","ตัวเลือกตาราง "+number,null,()->noteTableMenu(table)),new LinearLayout.LayoutParams(dp(48),dp(48)));
+            HorizontalScrollView scroll=new HorizontalScrollView(this);scroll.setHorizontalScrollBarEnabled(true);LinearLayout grid=vertical();scroll.addView(grid);panel.addView(scroll);
+            for(int r=0;r<table.cells.size();r++) {LinearLayout row=horizontal(grid);for(int c=0;c<table.columns();c++) {final int rr=r,cc=c;EditText cell=input("แถว "+(r+1)+" ช่อง "+(c+1),false);cell.setImeOptions(android.view.inputmethod.EditorInfo.IME_FLAG_NO_EXTRACT_UI);cell.setTextSize(16);cell.setMinHeight(dp(54));cell.setGravity(Gravity.TOP);cell.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE);cell.setFilters(new InputFilter[]{new InputFilter.LengthFilter(4000)});cell.setTag(table.id+":"+r+":"+c);cell.setContentDescription("ตาราง "+number+" แถว "+(r+1)+" คอลัมน์ "+(c+1));cell.setText(table.cells.get(r).get(c));
+                GradientDrawable border=background(r==0?0xffEDF3E9:Color.WHITE,0);border.setStroke(dp(1),0xffC8D6C6);cell.setBackground(border);row.addView(cell,new LinearLayout.LayoutParams(dp(150),-2));
+                cell.addTextChangedListener(new TextWatcher() {public void beforeTextChanged(CharSequence s,int a,int count,int after) {rememberNote(true);}public void onTextChanged(CharSequence s,int a,int before,int count) {table.cells.get(rr).set(cc,s.toString());changed();}public void afterTextChanged(Editable e) {updateNoteTools();cell.post(()->cell.requestRectangleOnScreen(new Rect(0,0,cell.getWidth(),cell.getHeight()),false));}});
+            }}
+        }
+    }
+    private void noteTableMenu(NoteTable table) {
+        new AlertDialog.Builder(this).setTitle("จัดการตาราง").setItems(new String[]{"เพิ่มแถวด้านล่าง","เพิ่มคอลัมน์ด้านขวา","ลบแถว…","ลบคอลัมน์…","ลบตาราง"},(d,index)->{
+            if(index==0) {if(table.cells.size()>=NoteTable.MAX_ROWS) {toast("สูงสุด 30 แถวต่อตาราง");return;}rememberNote(false);table.cells.add(new ArrayList<>(Collections.nCopies(table.columns(),"")));finishTableChange();}
+            else if(index==1) {if(table.columns()>=NoteTable.MAX_COLS) {toast("สูงสุด 8 คอลัมน์ต่อตาราง");return;}rememberNote(false);for(List<String> row:table.cells) row.add("");finishTableChange();}
+            else if(index==2||index==3) {boolean rows=index==2;int count=rows?table.cells.size():table.columns();if(count<=1) {toast("ต้องเหลืออย่างน้อย 1 แถวและ 1 คอลัมน์");return;}String[] labels=new String[count];for(int i=0;i<count;i++) labels[i]=(rows?"แถว ":"คอลัมน์ ")+(i+1);new AlertDialog.Builder(this).setTitle(rows?"เลือกแถวที่จะลบ":"เลือกคอลัมน์ที่จะลบ").setItems(labels,(dialog,which)->confirm("ลบข้อมูลใน"+labels[which]+"?","ย้อนกลับได้ด้วยปุ่มย้อนกลับข้อความ",()->{rememberNote(false);if(rows) table.cells.remove(which);else for(List<String> row:table.cells) row.remove(which);finishTableChange();})).show();}
+            else confirm("ลบตารางนี้?","ย้อนกลับได้ด้วยปุ่มย้อนกลับข้อความ",()->{rememberNote(false);tables.remove(table);finishTableChange();});
+        }).show();
+    }
+    private void finishTableChange() {keyboardOff();renderNoteTables();changed();updateNoteTools();}
+
     private void chooseFolder() {
         EditText field=input("ชื่อโฟลเดอร์",true);field.setText(folder);
         new AlertDialog.Builder(this).setTitle("โฟลเดอร์ของโน้ต").setView(field).setNegativeButton("ยกเลิก",null).setPositiveButton("บันทึก",(d,w) -> {

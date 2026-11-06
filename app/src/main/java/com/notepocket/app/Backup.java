@@ -15,7 +15,7 @@ public final class Backup {
     private static final String[] TABLES={"notes","docs","note_docs","page_notes","reading","page_ink","page_text","fonts"};
     private Backup() {}
     public static void write(Context context,Store store,OutputStream stream) throws Exception {
-        JSONObject manifest=new JSONObject();manifest.put("format","NotePocket");manifest.put("version",4);
+        JSONObject manifest=new JSONObject();manifest.put("format","NotePocket");manifest.put("version",5);
         SQLiteDatabase db=store.getWritableDatabase();db.beginTransaction();
         try(ZipOutputStream zip=new ZipOutputStream(stream)) {
             for(String table:TABLES) {
@@ -63,7 +63,7 @@ public final class Backup {
                     if(total>LIMIT) throw new IOException("Archive too large");zip.closeEntry();
                 }
             }
-            if(manifest==null||!manifest.optString("format").equals("NotePocket")||(manifest.optInt("version")!=2&&manifest.optInt("version")!=3&&manifest.optInt("version")!=4)) throw new IOException("Unsupported backup");
+            if(manifest==null||!manifest.optString("format").equals("NotePocket")||(manifest.optInt("version")!=2&&manifest.optInt("version")!=3&&manifest.optInt("version")!=4&&manifest.optInt("version")!=5)) throw new IOException("Unsupported backup");
             for(String table:TABLES) if(rows(manifest,table).length()>10000) throw new IOException("Too many records");
             if(rows(manifest,"fonts").length()+store.query("SELECT id FROM fonts").size()>30) throw new IOException("Font library full");
             SQLiteDatabase db=store.getWritableDatabase();db.beginTransaction();
@@ -75,6 +75,7 @@ public final class Backup {
                     if(notes.containsKey(old)) throw new IOException("Duplicate note");
                     ContentValues v=new ContentValues();
                     for(String key:new String[]{"title","body","rich","folder"}) v.put(key,row.getString(key));
+                    v.put("tables",NoteTable.encode(NoteTable.decode(row.optString("tables","[]"))));
                     v.put("updated",row.getLong("updated"));v.put("pinned",row.getInt("pinned")==0?0:1);v.put("deleted",row.getInt("deleted")==0?0:1);
                     notes.put(old,db.insertOrThrow("notes",null,v));
                 }

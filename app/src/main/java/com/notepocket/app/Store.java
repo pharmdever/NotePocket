@@ -8,13 +8,14 @@ import java.util.*;
 /** Additive, transactional schema migration; never drops user data. */
 public final class Store extends SQLiteOpenHelper {
     public Store(Context context) { this(context, "notepocket.db"); }
-    Store(Context context, String name) { super(context,name,null,4); }
+    Store(Context context, String name) { super(context,name,null,5); }
     @Override public void onCreate(SQLiteDatabase db) { migrate(db); }
     @Override public void onUpgrade(SQLiteDatabase db,int oldVersion,int newVersion) { migrate(db); }
     private void migrate(SQLiteDatabase db) {
         db.execSQL("CREATE TABLE IF NOT EXISTS notes (id INTEGER PRIMARY KEY, title TEXT NOT NULL, body TEXT NOT NULL, updated INTEGER NOT NULL)");
         db.execSQL("CREATE TABLE IF NOT EXISTS docs (id TEXT PRIMARY KEY, name TEXT NOT NULL, mime TEXT NOT NULL, size INTEGER NOT NULL)");
         db.execSQL("CREATE TABLE IF NOT EXISTS note_docs (note_id INTEGER NOT NULL, doc_id TEXT NOT NULL, PRIMARY KEY(note_id,doc_id))");
+        addColumn(db,"notes","tables","TEXT NOT NULL DEFAULT '[]'");
         addColumn(db,"notes","rich","TEXT NOT NULL DEFAULT ''");
         addColumn(db,"notes","folder","TEXT NOT NULL DEFAULT 'ทั่วไป'");
         addColumn(db,"notes","pinned","INTEGER NOT NULL DEFAULT 0");
@@ -57,6 +58,10 @@ public final class Store extends SQLiteOpenHelper {
         if(id<0) return getWritableDatabase().insertOrThrow("notes",null,v);
         if(getWritableDatabase().update("notes",v,"id=?",new String[]{""+id})!=1) throw new IllegalStateException("Note missing");
         return id;
+    }
+    public long save(long id,String title,String body,String rich,String folder,String tables) {
+        String validated=NoteTable.encode(NoteTable.decode(tables));SQLiteDatabase db=getWritableDatabase();db.beginTransaction();
+        try {long saved=save(id,title,body,rich,folder);ContentValues v=new ContentValues();v.put("tables",validated);if(db.update("notes",v,"id=?",new String[]{""+saved})!=1) throw new IllegalStateException("Note missing");db.setTransactionSuccessful();return saved;}finally {db.endTransaction();}
     }
     public void flag(long id,String column,int value) {
         if(!column.equals("deleted")&&!column.equals("pinned")) throw new IllegalArgumentException();

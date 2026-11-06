@@ -23,6 +23,21 @@ public final class ReaderIconButton extends View {
         canvas.save();float side=24*density,cy=caption==null?getHeight()/2f:22*density;canvas.translate((getWidth()-side)/2,cy-side/2);canvas.scale(side/24,side/24);
         paint.setColor(color);paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(1.9f);paint.setStrokeCap(Paint.Cap.ROUND);paint.setStrokeJoin(Paint.Join.ROUND);paint.setPathEffect(null);
         switch(icon) {
+            case "bold": letter(canvas,"B",true,false);break;
+            case "italic": letter(canvas,"I",false,true);break;
+            case "underline": letter(canvas,"U",false,false);line(canvas,5,22,19,22);break;
+            case "strike": letter(canvas,"S",false,false);line(canvas,3,12,21,12);break;
+            case "heading": letter(canvas,"H",true,false);break;
+            case "size": letter(canvas,"Aa",false,false);break;
+            case "color": letter(canvas,"A",true,false);paint.setColor(0xffD12D39);paint.setStrokeWidth(3);line(canvas,5,22,19,22);break;
+            case "bullet": case "number": for(int i=0;i<3;i++) {int y=6+i*6;line(canvas,9,y,21,y);if(icon.equals("bullet")) {paint.setStyle(Paint.Style.FILL);canvas.drawCircle(3,y,1.3f,paint);paint.setStyle(Paint.Style.STROKE);}else {paint.setStyle(Paint.Style.FILL);paint.setTextSize(6);canvas.drawText(""+(i+1),2,y+2,paint);paint.setStyle(Paint.Style.STROKE);}}break;
+            case "check": canvas.drawRoundRect(new RectF(3,3,21,21),2,2,paint);path(canvas,7,12,11,16,18,8);break;
+            case "table": canvas.drawRect(3,4,21,20,paint);line(canvas,3,9,21,9);line(canvas,3,15,21,15);line(canvas,9,4,9,20);line(canvas,15,4,15,20);break;
+            case "clear": path(canvas,4,15,13,5,20,12,12,21,9,21,4,15);line(canvas,3,22,21,22);break;
+            case "find": canvas.drawCircle(10,10,6,paint);line(canvas,15,15,22,22);break;
+            case "attach": {Path p=new Path();p.moveTo(9,16);p.lineTo(16,9);p.cubicTo(20,5,15,1,12,5);p.lineTo(5,12);p.cubicTo(-1,18,7,25,13,19);p.lineTo(21,11);canvas.drawPath(p,paint);break;}
+            case "folder": path(canvas,2,6,10,6,12,9,22,9,22,20,2,20,2,6);break;
+            case "share": line(canvas,6,12,18,5);line(canvas,6,12,18,19);for(int[] point:new int[][]{{5,12},{19,4},{19,20}}) canvas.drawCircle(point[0],point[1],2.5f,paint);break;
             case "read": path(canvas,3,5,3,19,11,21,12,21,21,19,21,5,13,7,12,7,3,5);line(canvas,12,7,12,21);line(canvas,6,10,9,11);line(canvas,15,11,18,10);break;
             case "pen": path(canvas,4,20,5,14,16,3,21,8,10,19,4,20);line(canvas,13,6,18,11);break;
             case "highlight": path(canvas,5,14,14,5,20,11,11,20,5,14);line(canvas,4,21,15,21);line(canvas,7,16,9,18);break;
@@ -38,6 +53,7 @@ public final class ReaderIconButton extends View {
         }
         canvas.restore();if(caption!=null) {paint.setStyle(Paint.Style.FILL);paint.setColor(color);paint.setTextAlign(Paint.Align.CENTER);paint.setTypeface(Typeface.DEFAULT);paint.setTextSize(11*getResources().getDisplayMetrics().scaledDensity);canvas.drawText(caption,getWidth()/2f,getHeight()-9*density,paint);paint.setTextAlign(Paint.Align.LEFT);}
     }
+    private void letter(Canvas canvas,String text,boolean bold,boolean italic) {paint.setStyle(Paint.Style.FILL);paint.setTextSize(text.length()>1?16:22);paint.setTypeface(Typeface.create("sans-serif",bold?Typeface.BOLD:italic?Typeface.ITALIC:Typeface.NORMAL));paint.setTextAlign(Paint.Align.CENTER);canvas.drawText(text,12,20,paint);paint.setTextAlign(Paint.Align.LEFT);paint.setTypeface(Typeface.DEFAULT);}
     private void undo(Canvas canvas) {path(canvas,8,4,3,9,8,14);Path p=new Path();p.moveTo(3,9);p.lineTo(13,9);p.cubicTo(22,9,22,19,15,21);canvas.drawPath(p,paint);}
     private void line(Canvas canvas,float x,float y,float endX,float endY) {canvas.drawLine(x,y,endX,endY,paint);}
     private void path(Canvas canvas,float...xy) {Path p=new Path();p.moveTo(xy[0],xy[1]);for(int i=2;i<xy.length;i+=2) p.lineTo(xy[i],xy[i+1]);canvas.drawPath(p,paint);}

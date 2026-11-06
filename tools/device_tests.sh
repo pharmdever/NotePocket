@@ -15,6 +15,7 @@ for image in sorted(Path('qa-output/screenshots').glob('*.png')):
 PYSCREEN
 }
 trap collect EXIT
+adb shell settings put secure show_ime_with_hard_keyboard 1
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
 adb shell am instrument -w -e notClass com.notepocket.app.UpdatePersistenceTest,com.notepocket.app.LegacyUpgradeSeedTest,com.notepocket.app.ReleaseUpgradeTest com.notepocket.notes.debug.test/androidx.test.runner.AndroidJUnitRunner | tee qa-output/device-tests.txt
@@ -24,7 +25,7 @@ text=Path('qa-output/device-tests.txt').read_text()
 assert 'OK (' in text and 'FAILURES' not in text and 'INSTRUMENTATION_FAILED' not in text, text
 PY
 # Raise the version code while keeping the package and key, then install without clearing data.
-gradle assembleDebug -PnotePocketVersionCode=6
+gradle assembleDebug -PnotePocketVersionCode=7
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell am instrument -w -e class com.notepocket.app.UpdatePersistenceTest com.notepocket.notes.debug.test/androidx.test.runner.AndroidJUnitRunner | tee qa-output/update-tests.txt
 python3 - <<'PY'
