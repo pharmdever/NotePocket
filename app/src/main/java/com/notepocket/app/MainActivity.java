@@ -22,6 +22,13 @@ public class MainActivity extends Activity {
     private static final int GREEN=PocketTheme.FOREST,INK=PocketTheme.INK,MUTED=PocketTheme.MUTED,BG=PocketTheme.CREAM,LINE=PocketTheme.LINE;
     private static final int PICK=10,EXPORT=11,BACKUP=12,RESTORE=13,ANNOTATED=14,FONT=15,CSV=16;
     private Store store;
+    private LibraryList library;
+    private boolean libraryReleased;
+    private EditorSaver noteSaver;
+    private long noteRevision,editorEpoch;
+    private String expandedTableId="";
+    private final Map<String,Integer> tablePages=new HashMap<>();
+    private final Runnable cursorFollower=this::followNoteCursorNow;
     private LinearLayout root,list,attachments;
     private EditText title,body;
     private LinearLayout noteHeader,noteToolbar,noteTables,noteToolsRow;
@@ -54,12 +61,15 @@ public class MainActivity extends Activity {
     private long noteId=-1,pendingAttach=-1,pdfReturnNote=-1;
     private boolean editor=false,loading=false,dirty=false,busy=false;
     private final Handler handler=new Handler(Looper.getMainLooper());
-    private final Runnable autosave=() -> saveNote(false);
+    private final Runnable autosave=this::queueSave;
     private PdfRenderer pdf;
     private ParcelFileDescriptor pdfFd;
     private Bitmap pageBitmap;
     private PdfPageView pageView;
-    private int pageIndex;
+    private int pageIndex,pdfPages;
+    private boolean pdfRendering,pdfImageReleased;
+    private volatile int pdfGeneration;
+    private final java.util.concurrent.ExecutorService pdfWorker=java.util.concurrent.Executors.newSingleThreadExecutor(r->new Thread(r,"NotePocket-PDF"));
     private ProgressDialog progress;
 
     @Override public void onCreate(Bundle state) {
@@ -69,7 +79,7 @@ public class MainActivity extends Activity {
             pendingAttach=state.getLong("pendingAttach",-1);exportId=state.getString("exportId");annotatedExportId=state.getString("annotatedExportId");
             if(state.getString("pdfId")!=null) {pdfReturnNote=state.getLong("pdfReturnNote",-1);openPdf(state.getString("pdfId"),state.getString("pdfName","PDF"),state.getInt("page",0),pdfReturnNote);if(pdf!=null) {inkMode(state.getInt("pdfMode",0)==PdfPageView.SELECT?PdfPageView.READ:state.getInt("pdfMode",0));setFullscreen(state.getBoolean("fullscreen"));String draft=state.getString("textDraft");if(draft!=null) handler.post(()->{TextBox box=TextBox.decode(draft).get(0);editTextBox(box,box.x,box.y);});}return;}
             if(state.getBoolean("editor")) {edit(state.getLong("noteId",-1));
-                if(editor) {int start=Math.max(0,Math.min(state.getInt("noteStart",0),body.length())),end=Math.max(0,Math.min(state.getInt("noteEnd",start),body.length()));body.setSelection(start,end);final int y=state.getInt("noteScroll",0);noteScroll.post(()->noteScroll.scrollTo(0,y));if(state.getBoolean("soapOpen")) handler.post(this::soapEditor);}return; }
+                if(editor) {int start=Math.max(0,Math.min(state.getInt("noteStart",0),body.length())),end=Math.max(0,Math.min(state.getInt("noteEnd",start),body.length()));body.setSelection(start,end);expandedTableId=state.getString("expandedTable",expandedTableId);tablePages.put(expandedTableId,state.getInt("tablePage",0));renderNoteTables();final String focusTag=state.getString("tableFocus");if(focusTag!=null) noteTables.post(()->{View field=noteTables.findViewWithTag(focusTag);if(field!=null) field.requestFocus();});final int y=state.getInt("noteScroll",0);noteScroll.post(()->noteScroll.scrollTo(0,y));if(state.getBoolean("soapOpen")) handler.post(this::soapEditor);}return; }
         }
         home();
     }
@@ -114,7 +124,7 @@ public class MainActivity extends Activity {
     }
     private void home() {
         if(editor&&!saveNote(false)) return;
-        handler.removeCallbacks(autosave);closePdf();editor=false;pdfReturnNote=-1;screen();
+        handler.removeCallbacks(autosave);if(library!=null) {library.close();library=null;}closePdf();editor=false;releaseEditorViews();pdfReturnNote=-1;screen();
         LinearLayout heading=horizontal(root);ReaderIconButton brand=icon("read","NotePocket",null,()->{});brand.setSelected(true);brand.setClickable(false);brand.setFocusable(false);brand.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);heading.addView(brand,new LinearLayout.LayoutParams(dp(48),dp(48)));
         TextView wordmark=strong("NotePocket",26);wordmark.setPadding(dp(10),0,0,0);heading.addView(wordmark,new LinearLayout.LayoutParams(0,-2,1));
         heading.addView(pill("● ออฟไลน์",PocketTheme.SAGE,GREEN));
@@ -130,8 +140,8 @@ public class MainActivity extends Activity {
                 action(commands,filter.equals("all")?"ทั้งหมด ▾":filter.equals("pinned")?"ปักหมุด ▾":filter.equals("trash")?"ถังขยะ ▾":(filter.startsWith("folder:")?filter.substring(7):filter)+" ▾",this::chooseFilter,false);
             }
             if(tab.equals("notes")) {LinearLayout helpers=horizontal(root);quickAction(helpers,"folder","โฟลเดอร์",PocketTheme.BUTTER,()->manageFolders(false));quickAction(helpers,"soap","＋ SOAP note",PocketTheme.LAVENDER,()->{edit(-1);soapEditor();});}
-            list=scroll(root,1);refresh();
-            search.addTextChangedListener(watcher(() -> {query=search.getText().toString();refresh();}));
+            library=new LibraryList(this,tab.equals("files"),filter,query,this::bindLibraryRow);root.addView(library,new LinearLayout.LayoutParams(-1,0,1));
+            search.addTextChangedListener(watcher(()->{query=search.getText().toString();if(library!=null) library.search(query);}));
         }
         gap(root,8);LinearLayout nav=horizontal(root);nav.setPadding(dp(4),dp(4),dp(4),dp(4));nav.setBackground(PocketTheme.shape(this,PocketTheme.SURFACE,24,true));
         for(String key:new String[]{"notes","files","settings"}) {
@@ -154,43 +164,37 @@ public class MainActivity extends Activity {
         for(ContentValues r:store.folders()) {values.add("folder:"+r.getAsString("name"));labels.add("โฟลเดอร์: "+r.getAsString("name")+" ("+r.getAsInteger("count")+")");}
         new PocketDialog.Builder(this).setTitle("แสดงโน้ต").setItems(labels.toArray(new String[0]),(d,w) -> {filter=values.get(w);home();}).show();
     }
-    private void refresh() {
-        list.removeAllViews();String match=Store.like(query);
-        if(tab.equals("files")) {
-            List<ContentValues> docs=store.query("SELECT * FROM docs WHERE name LIKE ? ESCAPE '\\' ORDER BY rowid DESC",match);
-            list.addView(text(docs.size()+" เอกสาร",13,MUTED));
-            for(ContentValues doc:docs) documentCard(list,doc,false);
-            if(docs.isEmpty()) empty("ยังไม่มีเอกสาร","นำเข้า PDF เพื่ออ่านและจดบันทึกประกอบแต่ละหน้า");
-            return;
-        }
-        String clause=filter.equals("trash")?"deleted=1":"deleted=0";
-        if(filter.equals("pinned")) clause+=" AND pinned=1";
-        List<ContentValues> rows;
-        if(!Arrays.asList("all","trash","pinned").contains(filter)) rows=store.query("SELECT * FROM notes WHERE "+clause+" AND folder=? AND (title LIKE ? ESCAPE '\\' OR body LIKE ? ESCAPE '\\' OR tables LIKE ? ESCAPE '\\') ORDER BY pinned DESC,updated DESC",filter.startsWith("folder:")?filter.substring(7):filter,match,match,match);
-        else rows=store.query("SELECT * FROM notes WHERE "+clause+" AND (title LIKE ? ESCAPE '\\' OR body LIKE ? ESCAPE '\\' OR tables LIKE ? ESCAPE '\\') ORDER BY pinned DESC,updated DESC",match,match,match);
-        list.addView(text(rows.size()+" โน้ต"+(filter.equals("trash")?"ในถังขยะ":""),13,MUTED));
-        for(ContentValues note:rows) {
-            long id=note.getAsLong("id");boolean deleted=note.getAsInteger("deleted")==1;
-            int tint=PocketTheme.NOTES[Math.floorMod(Long.hashCode(id),PocketTheme.NOTES.length)];LinearLayout c=card(list);c.setBackground(background(deleted?PocketTheme.SURFACE:tint,22));c.setPadding(dp(16),dp(10),dp(16),dp(12));
-            LinearLayout top=horizontal(c);TextView folderTag=pill((note.getAsInteger("pinned")==1?"★ ":"")+note.getAsString("folder"),PocketTheme.SURFACE,GREEN);folderTag.setMaxWidth(dp(200));top.addView(folderTag,new LinearLayout.LayoutParams(-2,-2));top.addView(new Space(this),new LinearLayout.LayoutParams(0,1,1));if(!deleted) top.addView(icon("more","ตัวเลือกโน้ต: "+note.getAsString("title"),null,()->noteMenu(id)),new LinearLayout.LayoutParams(dp(48),dp(48)));
-            TextView name=strong(note.getAsString("title"),20);name.setMaxLines(2);name.setEllipsize(TextUtils.TruncateAt.END);c.addView(name);TextView preview=text(note.getAsString("body"),15,MUTED);preview.setMaxLines(2);preview.setEllipsize(TextUtils.TruncateAt.END);c.addView(preview);
-            int count=store.attachments(id).size();c.addView(text(date(note.getAsLong("updated"))+(count>0?"  ·  "+count+" ไฟล์แนบ":""),11,MUTED));
-            if(deleted) {LinearLayout buttons=horizontal(c);action(buttons,"กู้คืน",()->{store.flag(id,"deleted",0);refresh();},false);action(buttons,"ลบถาวร",()->confirm("ลบโน้ตถาวร?","ไฟล์แนบยังคงอยู่ในเอกสาร แต่ข้อความจะกู้คืนไม่ได้",()->{store.eraseNote(id);refresh();}),false);}
-            else c.setOnClickListener(v->edit(id));
-        }
-        if(rows.isEmpty()) empty(query.isEmpty()?(filter.equals("trash")?"ถังขยะว่าง":"พื้นที่สำหรับความคิดใหม่"):"ไม่พบโน้ต","แตะเขียนโน้ตเพื่อเริ่ม หรือเปลี่ยนคำค้นหา");
+    private void refresh() {if(library!=null) library.reload();}
+    private static final class LibraryRow {
+        boolean files;ContentValues data;LinearLayout outer,panel,actions;TextView tag,title,preview,meta;ReaderIconButton more;
     }
-    private void empty(String heading,String hint) { LinearLayout c=card(list);c.addView(strong(heading,21));c.addView(text(hint,15,MUTED)); }
+    private View bindLibraryRow(ContentValues data,View recycled,boolean files) {
+        LibraryRow row=recycled!=null&&recycled.getTag() instanceof LibraryRow?(LibraryRow)recycled.getTag():null;
+        if(row==null) {row=new LibraryRow();row.files=files;row.outer=vertical();row.panel=card(row.outer);row.panel.setPadding(dp(16),dp(10),dp(16),dp(12));LinearLayout top=horizontal(row.panel);row.tag=pill("",PocketTheme.SURFACE,GREEN);row.tag.setMaxWidth(dp(200));top.addView(row.tag,new LinearLayout.LayoutParams(-2,-2));top.addView(new Space(this),new LinearLayout.LayoutParams(0,1,1));LibraryRow holder=row;
+            row.more=icon("more","ตัวเลือกโน้ต",null,()->noteMenu(holder.data.getAsLong("id")));top.addView(row.more,new LinearLayout.LayoutParams(dp(48),dp(48)));
+            row.title=strong("",20);row.title.setMaxLines(2);row.title.setEllipsize(TextUtils.TruncateAt.END);row.panel.addView(row.title);row.preview=text("",15,MUTED);row.preview.setMaxLines(2);row.preview.setEllipsize(TextUtils.TruncateAt.END);row.panel.addView(row.preview);row.meta=text("",11,MUTED);row.panel.addView(row.meta);row.actions=horizontal(row.panel);
+            if(files) {action(row.actions,"เปิด",()->openDocument(holder.data.getAsString("id"),holder.data.getAsString("name"),holder.data.getAsString("mime")),false);action(row.actions,"ส่งออก",()->exportDocument(holder.data.getAsString("id"),holder.data.getAsString("name"),holder.data.getAsString("mime")),false);action(row.actions,"ลบ",()->confirm("ลบเอกสารถาวร?","ไฟล์ บันทึกประกอบหน้า และการแนบกับทุกโน้ตจะถูกลบ กรุณาสำรองข้อมูลก่อน",()->{String id=holder.data.getAsString("id");store.eraseDoc(id);new File(getFilesDir(),id).delete();refresh();}),false);}
+            else {action(row.actions,"กู้คืน",()->{store.flag(holder.data.getAsLong("id"),"deleted",0);refresh();},false);action(row.actions,"ลบถาวร",()->confirm("ลบโน้ตถาวร?","ไฟล์แนบยังคงอยู่ในเอกสาร แต่ข้อความจะกู้คืนไม่ได้",()->{store.eraseNote(holder.data.getAsLong("id"));refresh();}),false);row.panel.setOnClickListener(v->{if(!busy&&holder.data.getAsInteger("deleted")==0) edit(holder.data.getAsLong("id"));});}
+            row.outer.setTag(row);
+        }
+        row.data=data;row.more.setVisibility(files||data.getAsInteger("deleted")==1?View.GONE:View.VISIBLE);
+        if(files) {row.panel.setBackground(PocketTheme.shape(this,PocketTheme.SURFACE,22,true));row.tag.setText(data.getAsString("mime").equals("application/pdf")?"PDF  ·  อ่านและจดประกอบ":"เอกสารแนบ");row.title.setText(data.getAsString("name"));row.preview.setVisibility(View.GONE);row.meta.setText(android.text.format.Formatter.formatFileSize(this,data.getAsLong("size")));row.actions.setVisibility(View.VISIBLE);}
+        else {boolean deleted=data.getAsInteger("deleted")==1;int tint=PocketTheme.NOTES[Math.floorMod(Long.hashCode(data.getAsLong("id")),PocketTheme.NOTES.length)];row.panel.setBackground(background(deleted?PocketTheme.SURFACE:tint,22));row.tag.setText((data.getAsInteger("pinned")==1?"★ ":"")+data.getAsString("folder"));row.title.setText(data.getAsString("title"));row.preview.setVisibility(View.VISIBLE);row.preview.setText(data.getAsString("preview"));int count=data.getAsInteger("attachments");row.meta.setText(date(data.getAsLong("updated"))+(count>0?"  ·  "+count+" ไฟล์แนบ":""));row.more.setContentDescription("ตัวเลือกโน้ต: "+data.getAsString("title"));row.actions.setVisibility(deleted?View.VISIBLE:View.GONE);}
+        return row.outer;
+    }
     private String date(long time) { return DateFormat.getDateTimeInstance(DateFormat.SHORT,DateFormat.SHORT).format(new Date(time)); }
     private void confirm(String heading,String message,Runnable action) { new PocketDialog.Builder(this).setTitle(heading).setMessage(message).setNegativeButton("ยกเลิก",null).setPositiveButton("ยืนยัน",(d,w) -> action.run()).show(); }
     private void noteMenu(long id) {
-        ContentValues n=store.note(id);if(n==null) return;
+        List<ContentValues> metadata=store.query("SELECT id,substr(title,1,240) AS title,pinned,deleted FROM notes WHERE id=?",""+id);if(metadata.isEmpty()) return;ContentValues n=metadata.get(0);
         new PocketDialog.Builder(this).setTitle(n.getAsString("title")).setItems(new String[]{n.getAsInteger("pinned")==1?"เลิกปักหมุด":"ปักหมุด","ย้ายเข้าถังขยะ"},(d,w) -> {
             if(w==0) {store.flag(id,"pinned",n.getAsInteger("pinned")==1?0:1);refresh();}
             else confirm("ย้ายเข้าถังขยะ?","สามารถกู้คืนได้จากตัวกรองถังขยะ",() -> {store.flag(id,"deleted",1);refresh();});
         }).show();
     }
+    private void releaseEditorViews() {if(noteSaver!=null) {noteSaver.close();noteSaver=null;}handler.removeCallbacks(cursorFollower);title=body=null;noteHeader=noteToolbar=noteTables=noteToolsRow=null;noteScroll=null;noteToolStatus=null;noteUndo=noteRedo=recentTool=null;noteToolIcons.clear();noteHistory.clear();tables=new ArrayList<>();soapDraft=new SoapDraft();}
     private void edit(long id) {
+        if(editor&&!saveNote(false)) return;if(library!=null) {library.close();library=null;}if(noteSaver!=null) noteSaver.close();noteRevision=0;final long epoch=++editorEpoch;expandedTableId="";tablePages.clear();
+        noteSaver=new EditorSaver(store,id,(revision,saved,failure)->{if(isDestroyed()||epoch!=editorEpoch||!editor) return;if(failure==null) {noteId=saved;if(revision==noteRevision) {dirty=false;savedLabel.setText("บันทึกแล้ว  ·  "+folder);}}else {savedLabel.setText("บันทึกไม่สำเร็จ — ตรวจสอบพื้นที่ว่าง");}});
         closePdf();pdfReturnNote=-1;editor=false;loading=true;noteId=id;dirty=false;
         ContentValues note=id<0?null:store.note(id);
         if(id>=0&&(note==null||note.getAsInteger("deleted")==1)) {home();toast("ไม่พบโน้ตนี้");return;}
@@ -231,19 +235,16 @@ public class MainActivity extends Activity {
         root.setFocusableInTouchMode(true);root.requestFocus();
     }
     private void changed() {
-        if(loading||!editor) return;dirty=true;if(savedLabel!=null) savedLabel.setText("กำลังบันทึก…  ·  "+folder);
+        if(loading||!editor) return;noteRevision++;dirty=true;if(savedLabel!=null) savedLabel.setText("กำลังบันทึก…  ·  "+folder);
         handler.removeCallbacks(autosave);handler.postDelayed(autosave,650);
     }
+    private NoteSnapshot captureNote() {return new NoteSnapshot(title.getText().toString(),body.getText(),folder,tables,soapDraft.json(),noteRevision);}
+    private boolean blankNewNote() {return noteSaver!=null&&noteSaver.noteId<0&&!noteSaver.isRunning()&&title.getText().toString().trim().isEmpty()&&body.length()==0&&tables.isEmpty()&&soapDraft.isEmpty();}
+    private void queueSave() {if(!editor||loading||!dirty||noteSaver==null||blankNewNote()) return;noteSaver.offer(captureNote());}
     private boolean saveNote(boolean force) {
-        handler.removeCallbacks(autosave);
-        if(!editor||title==null||body==null) return true;
-        if(!dirty&&noteId>=0) return true;
-        String t=title.getText().toString(),b=body.getText().toString();
-        if(noteId<0&&!force&&t.trim().isEmpty()&&b.trim().isEmpty()&&tables.isEmpty()&&soapDraft.isEmpty()) return true;
-        try {
-            noteId=store.save(noteId,t,b,NoteFormat.encode(body.getText()),folder,NoteTable.encode(tables),soapDraft.json());dirty=false;
-            savedLabel.setText("บันทึกแล้ว  ·  "+folder);return true;
-        } catch(Exception e) {savedLabel.setText("บันทึกไม่สำเร็จ — ตรวจสอบพื้นที่ว่าง");toast("ยังบันทึกไม่ได้ กรุณาอย่าเพิ่งปิดโน้ต");return false;}
+        handler.removeCallbacks(autosave);if(!editor||title==null||body==null||noteSaver==null) return true;if(!dirty&&noteSaver.noteId>=0) {noteId=noteSaver.noteId;return true;}if(!force&&blankNewNote()) return true;
+        if(noteSaver.flush(captureNote())) {noteId=noteSaver.noteId;dirty=false;savedLabel.setText("บันทึกแล้ว  ·  "+folder);return true;}
+        savedLabel.setText("บันทึกไม่สำเร็จ — ตรวจสอบพื้นที่ว่าง");toast("ยังบันทึกไม่ได้ กรุณาอย่าเพิ่งปิดโน้ต");return false;
     }
     private void style(int type) {
         int start=body.getSelectionStart(),end=body.getSelectionEnd();
@@ -260,11 +261,11 @@ public class MainActivity extends Activity {
     private void shareNote() {
         if(!saveNote(false)) return;Intent intent=new Intent(Intent.ACTION_SEND);intent.setType("text/plain");intent.putExtra(Intent.EXTRA_TEXT,title.getText()+"\n\n"+body.getText()+NoteTable.plain(tables));startActivity(Intent.createChooser(intent,"แชร์ข้อความโน้ต"));
     }
-    private NoteHistory.State noteState() {return new NoteHistory.State(title.getText().toString(),NoteFormat.encode(body.getText()),NoteTable.encode(tables),soapDraft.json(),body.getSelectionStart(),body.getSelectionEnd());}
-    private void rememberNote(boolean typing) {if(editor&&!loading&&body!=null) noteHistory.remember(noteState(),typing);}
+    private NoteHistory.State noteState() {return new NoteHistory.State(title.getText().toString(),body.getText(),tables,soapDraft.json(),body.getSelectionStart(),body.getSelectionEnd());}
+    private void rememberNote(boolean typing) {if(editor&&!loading&&body!=null) noteHistory.remember(this::noteState,typing);}
     private void restoreNoteHistory(boolean redo) {
         NoteHistory.State state=redo?noteHistory.redo(noteState()):noteHistory.undo(noteState());if(state==null) return;
-        loading=true;title.setText(state.title);body.setText(NoteFormat.decode(state.rich,""));tables=NoteTable.decode(state.tables);soapDraft=new SoapDraft(state.soap);renderNoteTables();
+        loading=true;title.setText(state.title);body.setText(state.body);tables=NoteTable.copy(state.tables);soapDraft=new SoapDraft(state.soap);renderNoteTables();
         body.setSelection(Math.max(0,Math.min(state.start,body.length())),Math.max(0,Math.min(state.end,body.length())));loading=false;changed();updateNoteTools();body.requestFocus();followNoteCursor();
     }
     private void createNoteToolbar() {
@@ -324,23 +325,24 @@ public class MainActivity extends Activity {
     private void prefixNoteLines(String prefix) {
         body.requestFocus();int lo=Math.max(0,Math.min(body.getSelectionStart(),body.getSelectionEnd())),hi=Math.max(lo,Math.max(body.getSelectionStart(),body.getSelectionEnd()));rememberNote(false);loading=true;try {NoteLists.toggle(body.getText(),lo,hi,prefix.equals("number")?"number":"bullet");}finally {loading=false;}changed();updateNoteTools();followNoteCursor();
     }
-    private void followNoteCursor() {
-        if(!editor||noteScroll==null||body==null) return;
-        handler.post(()->{if(!editor||body==null||!body.hasFocus()||body.getLayout()==null) return;int cursor=Math.max(0,body.getSelectionEnd());android.text.Layout layout=body.getLayout();int line=layout.getLineForOffset(Math.min(cursor,body.length()));android.graphics.Rect rect=new android.graphics.Rect(0,layout.getLineTop(line)+body.getTotalPaddingTop(),body.getWidth(),layout.getLineBottom(line)+body.getTotalPaddingTop()+dp(24));body.requestRectangleOnScreen(rect,false);});
-    }
+    private void followNoteCursor() {handler.removeCallbacks(cursorFollower);if(editor) handler.post(cursorFollower);}
+    private void followNoteCursorNow() {if(!editor||body==null||!body.hasFocus()||body.getLayout()==null) return;int cursor=Math.max(0,body.getSelectionEnd());android.text.Layout layout=body.getLayout();int line=layout.getLineForOffset(Math.min(cursor,body.length()));Rect rect=new Rect(0,layout.getLineTop(line)+body.getTotalPaddingTop(),body.getWidth(),layout.getLineBottom(line)+body.getTotalPaddingTop()+dp(24));body.requestRectangleOnScreen(rect,false);}
     private void findInNote() {
         EditText field=input("ข้อความที่ต้องการหา",true);new PocketDialog.Builder(this).setTitle("ค้นหาในโน้ต").setView(field).setNegativeButton("ยกเลิก",null).setPositiveButton("ค้นหาถัดไป",(d,w)->{String term=field.getText().toString();if(term.isEmpty()) return;String text=body.getText().toString();int start=Math.max(0,body.getSelectionEnd());int index=text.toLowerCase(Locale.ROOT).indexOf(term.toLowerCase(Locale.ROOT),start);if(index<0) index=text.toLowerCase(Locale.ROOT).indexOf(term.toLowerCase(Locale.ROOT));if(index<0) toast("ไม่พบข้อความนี้ในเนื้อหาโน้ต");else {body.requestFocus();body.setSelection(index,index+term.length());followNoteCursor();}}).show();
     }
     private void insertNoteTable() {
         if(tables.size()>=NoteTable.MAX_TABLES) {toast("เพิ่มได้สูงสุด 10 ตารางต่อโน้ต");return;}LinearLayout form=vertical();form.setPadding(dp(18),dp(8),dp(18),dp(8));form.addView(text("แทรกตารางต่อจากเนื้อหาโน้ต · เลื่อนตารางซ้าย–ขวาได้",14,MUTED));
         Spinner rows=new Spinner(this,Spinner.MODE_DIALOG),cols=new Spinner(this,Spinner.MODE_DIALOG);String[] counts={"1","2","3","4","5","6","7","8"};rows.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,counts));cols.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,counts));rows.setSelection(2);cols.setSelection(2);rows.setContentDescription("จำนวนแถว");cols.setContentDescription("จำนวนคอลัมน์");form.addView(text("แถว",14,INK));form.addView(rows);form.addView(text("คอลัมน์",14,INK));form.addView(cols);
-        new PocketDialog.Builder(this).setTitle("สร้างตาราง").setView(form).setNegativeButton("ยกเลิก",null).setPositiveButton("แทรก",(d,w)->{rememberNote(false);NoteTable table=new NoteTable(rows.getSelectedItemPosition()+1,cols.getSelectedItemPosition()+1);tables.add(table);renderNoteTables();changed();updateNoteTools();handler.post(()->{View first=noteTables.findViewWithTag(table.id+":0:0");if(first!=null) {first.requestFocus();first.requestRectangleOnScreen(new Rect(0,0,first.getWidth(),first.getHeight()),false);((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).showSoftInput(first,InputMethodManager.SHOW_IMPLICIT);}});}).show();
+        new PocketDialog.Builder(this).setTitle("สร้างตาราง").setView(form).setNegativeButton("ยกเลิก",null).setPositiveButton("แทรก",(d,w)->{rememberNote(false);NoteTable table=new NoteTable(rows.getSelectedItemPosition()+1,cols.getSelectedItemPosition()+1);tables.add(table);expandedTableId=table.id;renderNoteTables();changed();updateNoteTools();handler.post(()->{View first=noteTables.findViewWithTag(table.id+":0:0");if(first!=null) {first.requestFocus();first.requestRectangleOnScreen(new Rect(0,0,first.getWidth(),first.getHeight()),false);((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).showSoftInput(first,InputMethodManager.SHOW_IMPLICIT);}});}).show();
     }
     private void renderNoteTables() {
-        if(noteTables==null) return;noteTables.removeAllViews();
+        if(noteTables==null) return;noteTables.removeAllViews();if(!tables.isEmpty()&&tables.stream().noneMatch(t->t.id.equals(expandedTableId))) expandedTableId=tables.get(0).id;
         for(int index=0;index<tables.size();index++) {NoteTable table=tables.get(index);final int number=index+1;LinearLayout panel=card(noteTables);LinearLayout top=horizontal(panel);top.addView(strong("ตาราง "+number+" · "+table.cells.size()+" × "+table.columns(),16),new LinearLayout.LayoutParams(0,-2,1));top.addView(icon("more","ตัวเลือกตาราง "+number,null,()->noteTableMenu(table)),new LinearLayout.LayoutParams(dp(48),dp(48)));
+            if(!table.id.equals(expandedTableId)) {panel.addView(button("เปิดแก้ไขตาราง",()->{expandedTableId=table.id;renderNoteTables();},false));continue;}
+            int start=Math.max(0,Math.min(tablePages.getOrDefault(table.id,0),Math.max(0,(table.cells.size()-1)/8)))*8,end=Math.min(table.cells.size(),start+8);
+            if(table.cells.size()>8) {LinearLayout pages=horizontal(panel);action(pages,"‹ แถวก่อนหน้า",()->{tablePages.put(table.id,Math.max(0,start/8-1));finishTableChange(false);},false);pages.addView(text((start+1)+"–"+end+" / "+table.cells.size(),12,MUTED));action(pages,"แถวถัดไป ›",()->{tablePages.put(table.id,Math.min((table.cells.size()-1)/8,start/8+1));finishTableChange(false);},false);}
             HorizontalScrollView scroll=new HorizontalScrollView(this);scroll.setHorizontalScrollBarEnabled(true);LinearLayout grid=vertical();scroll.addView(grid);panel.addView(scroll);
-            for(int r=0;r<table.cells.size();r++) {LinearLayout row=horizontal(grid);for(int c=0;c<table.columns();c++) {final int rr=r,cc=c;EditText cell=input("แถว "+(r+1)+" ช่อง "+(c+1),false);cell.setImeOptions(android.view.inputmethod.EditorInfo.IME_FLAG_NO_EXTRACT_UI);cell.setTextSize(16);cell.setMinHeight(dp(54));cell.setGravity(Gravity.TOP);cell.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE);cell.setFilters(new InputFilter[]{new InputFilter.LengthFilter(4000)});cell.setTag(table.id+":"+r+":"+c);cell.setContentDescription("ตาราง "+number+" แถว "+(r+1)+" คอลัมน์ "+(c+1));cell.setText(table.cells.get(r).get(c));
+            for(int r=start;r<end;r++) {LinearLayout row=horizontal(grid);for(int c=0;c<table.columns();c++) {final int rr=r,cc=c;EditText cell=input("แถว "+(r+1)+" ช่อง "+(c+1),false);cell.setImeOptions(android.view.inputmethod.EditorInfo.IME_FLAG_NO_EXTRACT_UI);cell.setTextSize(16);cell.setMinHeight(dp(54));cell.setGravity(Gravity.TOP);cell.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE);cell.setFilters(new InputFilter[]{new InputFilter.LengthFilter(4000)});cell.setTag(table.id+":"+r+":"+c);cell.setContentDescription("ตาราง "+number+" แถว "+(r+1)+" คอลัมน์ "+(c+1));cell.setText(table.cells.get(r).get(c));
                 GradientDrawable border=background(r==0?0xffEDF3E9:Color.WHITE,0);border.setStroke(dp(1),0xffC8D6C6);cell.setBackground(border);row.addView(cell,new LinearLayout.LayoutParams(dp(table.width(c)),-2));cell.setOnFocusChangeListener((v,focus)->{if(focus) {focusedTable=table.id;focusedRow=rr;focusedColumn=cc;}});
                 cell.addTextChangedListener(new TextWatcher() {public void beforeTextChanged(CharSequence s,int a,int count,int after) {rememberNote(true);}public void onTextChanged(CharSequence s,int a,int before,int count) {table.cells.get(rr).set(cc,s.toString());changed();}public void afterTextChanged(Editable e) {updateNoteTools();cell.post(()->cell.requestRectangleOnScreen(new Rect(0,0,cell.getWidth(),cell.getHeight()),false));}});
             }}
@@ -359,7 +361,8 @@ public class MainActivity extends Activity {
             else confirm("ลบตารางนี้?","ย้อนกลับได้ด้วยปุ่มย้อนกลับข้อความ",()->{rememberNote(false);tables.remove(table);finishTableChange();});
         })).show();
     }
-    private void finishTableChange() {keyboardOff();renderNoteTables();changed();updateNoteTools();}
+    private void finishTableChange() {finishTableChange(true);}
+    private void finishTableChange(boolean edited) {keyboardOff();renderNoteTables();if(edited) changed();updateNoteTools();}
 
     private void chooseFolder() {manageFolders(true);}
     private void applyNoteToolOrder() {
@@ -466,9 +469,9 @@ public class MainActivity extends Activity {
         if(!saveNote(false)) return;long back=editor?noteId:-1;keyboardOff();openPdf(id,name,store.lastPage(id),back);
     }
     private void openPdf(String id,String name,int page,long backNote) {
-        handler.removeCallbacks(autosave);editor=false;closePdf();pdfReturnNote=backNote;
+        handler.removeCallbacks(autosave);editor=false;releaseEditorViews();if(library!=null) {library.close();library=null;}closePdf();pdfReturnNote=backNote;
         try {
-            pdfFd=ParcelFileDescriptor.open(new File(getFilesDir(),id),ParcelFileDescriptor.MODE_READ_ONLY);pdf=new PdfRenderer(pdfFd);if(pdf.getPageCount()<1) throw new IOException();
+            pdfFd=ParcelFileDescriptor.open(new File(getFilesDir(),id),ParcelFileDescriptor.MODE_READ_ONLY);pdf=new PdfRenderer(pdfFd);pdfPages=pdf.getPageCount();if(pdfPages<1) throw new IOException();
             pdfId=id;pdfName=name;root=vertical();root.setBackgroundColor(BG);setContentView(root);
             root.setOnApplyWindowInsetsListener((view,insets) -> {view.setPadding(fullscreen?0:insets.getSystemWindowInsetLeft(),fullscreen?0:insets.getSystemWindowInsetTop(),fullscreen?0:insets.getSystemWindowInsetRight(),fullscreen?0:insets.getSystemWindowInsetBottom());return insets;});
             readerHeader=horizontal(root);readerHeader.setPadding(dp(4),0,dp(4),0);
@@ -491,7 +494,7 @@ public class MainActivity extends Activity {
             previousIcon=icon("previous","หน้าก่อนหน้า","ก่อนหน้า",()->renderPage(pageIndex-1));readerFooter.addView(previousIcon,new LinearLayout.LayoutParams(dp(76),dp(60)));
             pageLabel=text("",16,INK);pageLabel.setTypeface(null,Typeface.BOLD);pageLabel.setGravity(Gravity.CENTER);pageLabel.setContentDescription("เลือกเลขหน้า PDF");pageLabel.setOnClickListener(v->jumpPage());readerFooter.addView(pageLabel,new LinearLayout.LayoutParams(0,dp(60),1));
             nextIcon=icon("next","หน้าถัดไป","ถัดไป",()->renderPage(pageIndex+1));readerFooter.addView(nextIcon,new LinearLayout.LayoutParams(dp(76),dp(60)));
-            applyReaderSettings();renderPage(Math.max(0,Math.min(page,pdf.getPageCount()-1)));root.requestApplyInsets();
+            applyReaderSettings();renderPage(Math.max(0,Math.min(page,pdfPages-1)));root.requestApplyInsets();
         } catch(Exception e) {returnFromPdf();toast("เปิด PDF ไม่ได้ ไฟล์อาจเสียหายหรือมีรหัสผ่าน");}
     }
     private Button compact(String value,Runnable callback) {Button button=button(value,callback,false);button.setMinHeight(0);button.setMinimumHeight(0);button.setPadding(dp(5),0,dp(5),0);button.setTextSize(14);return button;}
@@ -535,7 +538,7 @@ public class MainActivity extends Activity {
     private void updateReaderActions() {
         if(pageView==null||pdf==null) return;
         if(undoIcon!=null) undoIcon.setEnabled(pageView.canUndo());if(redoIcon!=null) redoIcon.setEnabled(pageView.canRedo());
-        if(previousIcon!=null) previousIcon.setEnabled(pageIndex>0);if(nextIcon!=null) nextIcon.setEnabled(pageIndex+1<pdf.getPageCount());
+        if(previousIcon!=null) previousIcon.setEnabled(!pdfRendering&&pageIndex>0);if(nextIcon!=null) nextIcon.setEnabled(!pdfRendering&&pageIndex+1<pdfPages);
         String[] names={"อ่าน","ปากกา","ไฮไลต์","ข้อความ","เลือกข้อความ"};if(toolStatus!=null) toolStatus.setText("เครื่องมือ: "+names[pageView.getMode()]);
         int[] modes={PdfPageView.READ,PdfPageView.PEN,PdfPageView.HIGHLIGHT,PdfPageView.SELECT,PdfPageView.TEXT};if(modeIcons!=null) for(int i=0;i<modeIcons.length;i++) modeIcons[i].setSelected(pageView.getMode()==modes[i]);
     }
@@ -567,25 +570,22 @@ public class MainActivity extends Activity {
         });
     }
     private void renderPage(int index) {
-        if(pdf==null||index<0||index>=pdf.getPageCount()) return;
-        if(selectionAction!=null) selectionAction.finish();if(pageView!=null) pageView.commitGesture();
-        try(PdfRenderer.Page p=pdf.openPage(index)) {
-            float scale=Math.min(3f,Math.min(2200f/p.getWidth(),3000f/p.getHeight()));
-            Bitmap next=Bitmap.createBitmap(Math.max(1,Math.round(p.getWidth()*scale)),Math.max(1,Math.round(p.getHeight()*scale)),Bitmap.Config.ARGB_8888);
-            next.eraseColor(Color.WHITE);p.render(next,null,null,PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY);pageView.setPage(next);
-            if(pageBitmap!=null) pageBitmap.recycle();pageBitmap=next;pageIndex=index;pageView.setDrawing(store.drawing(pdfId,index));pageView.setTextBoxes(store.textBoxes(pdfId,index));store.remember(pdfId,index);updatePageLabels();
-        } catch(Exception|OutOfMemoryError e) {toast("แสดงหน้านี้ไม่ได้ ลองปิดแอปอื่นแล้วเปิดใหม่");}
+        if(pdf==null||index<0||index>=pdfPages) return;if(selectionAction!=null) selectionAction.finish();pageView.commitGesture();
+        final PdfRenderer renderer=pdf;final String doc=pdfId;final int request=++pdfGeneration;pdfRendering=true;pageView.setEnabled(false);previousIcon.setEnabled(false);nextIcon.setEnabled(false);pageLabel.setText("กำลังเปิดหน้า "+(index+1)+"…");
+        pdfWorker.execute(()->{Bitmap rendered=null;String drawing="[]",boxes="[]";Throwable failure=null;try {if(request!=pdfGeneration) return;try(PdfRenderer.Page page=renderer.openPage(index)) {rendered=PdfBudget.render(page);}try(Store reader=new Store(getApplicationContext())) {drawing=reader.drawing(doc,index);boxes=reader.textBoxes(doc,index);}}catch(Exception|OutOfMemoryError error) {failure=error;}
+            final Bitmap ready=rendered;final String ink=drawing,text=boxes;final Throwable error=failure;handler.post(()->{if(isDestroyed()||request!=pdfGeneration||pdf!=renderer||pageView==null) {if(ready!=null) ready.recycle();return;}pdfRendering=false;pageView.setEnabled(true);if(error!=null||ready==null) {if(ready!=null) ready.recycle();updatePageLabels();toast("แสดงหน้านี้ไม่ได้ ลองเปิดอีกครั้ง");return;}Bitmap previous=pageBitmap;pageBitmap=ready;pageView.setPage(ready);pageIndex=index;pageView.setDrawing(ink);pageView.setTextBoxes(text);pdfImageReleased=false;if(previous!=null) previous.recycle();store.remember(doc,index);updatePageLabels();});
+        });
     }
     private void updatePageLabels() {
-        ContentValues page=store.page(pdfId,pageIndex);pageLabel.setText((pageIndex+1)+" / "+pdf.getPageCount());
+        ContentValues page=store.page(pdfId,pageIndex);pageLabel.setText((pageIndex+1)+" / "+pdfPages);
         if(bookmarkButton!=null) bookmarkButton.setText(page.getAsInteger("bookmarked")==1?"★":"☆");
-        pageLabel.setText((page.getAsInteger("bookmarked")==1?"★ ":"")+"หน้า "+(pageIndex+1)+" / "+pdf.getPageCount());updateReaderActions();
-        pageView.setContentDescription("PDF หน้า "+(pageIndex+1)+" จาก "+pdf.getPageCount()+" หน้า เลือกปากกาหรือไฮไลต์เพื่อเขียน ใช้สองนิ้วซูม");
+        pageLabel.setText((page.getAsInteger("bookmarked")==1?"★ ":"")+"หน้า "+(pageIndex+1)+" / "+pdfPages);updateReaderActions();
+        pageView.setContentDescription("PDF หน้า "+(pageIndex+1)+" จาก "+pdfPages+" หน้า เลือกปากกาหรือไฮไลต์เพื่อเขียน ใช้สองนิ้วซูม");
     }
     private void jumpPage() {
         EditText field=input("เลขหน้า",true);field.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);field.setText(""+(pageIndex+1));
         new PocketDialog.Builder(this).setTitle("ไปที่หน้า").setView(field).setNegativeButton("ยกเลิก",null).setPositiveButton("เปิด",(d,w) -> {
-            try {int page=Integer.parseInt(field.getText().toString());if(page<1||page>pdf.getPageCount()) throw new IllegalArgumentException();renderPage(page-1);}catch(Exception e) {toast("กรุณาใส่เลขหน้าที่มีในเอกสาร");}
+            try {int page=Integer.parseInt(field.getText().toString());if(page<1||page>pdfPages) throw new IllegalArgumentException();renderPage(page-1);}catch(Exception e) {toast("กรุณาใส่เลขหน้าที่มีในเอกสาร");}
         }).show();
     }
     private void pageNote() {
@@ -603,12 +603,12 @@ public class MainActivity extends Activity {
     }
     private void returnFromPdf() {long back=pdfReturnNote;closePdf();pdfReturnNote=-1;if(back>=0) edit(back);else home();}
     private void closePdf() {
+        pdfGeneration++;pdfRendering=false;pdfImageReleased=false;
         if(selectionAction!=null) selectionAction.finish();if(paletteWindow!=null) {paletteWindow.dismiss();paletteWindow=null;}
         setFullscreen(false);readerHeader=readerFooter=null;toolDock=historyStrip=null;toolStatus=null;modeIcons=null;undoIcon=redoIcon=previousIcon=nextIcon=moreIcon=collapsedTools=null;pdfStage=null;getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         if(pageView!=null) {pageView.commitGesture();pageView.setPage(null);pageView=null;}
         if(pageBitmap!=null) {pageBitmap.recycle();pageBitmap=null;}
-        if(pdf!=null) {pdf.close();pdf=null;}
-        if(pdfFd!=null) {try {pdfFd.close();}catch(IOException ignored) {}pdfFd=null;}pdfId=null;
+        PdfRenderer old=pdf;ParcelFileDescriptor fd=pdfFd;pdf=null;pdfFd=null;if(old!=null||fd!=null) pdfWorker.execute(()->{if(old!=null) old.close();if(fd!=null) try {fd.close();}catch(IOException ignored) {}});pdfId=null;
     }
     private void exportAnnotated() {
         pageView.commitGesture();annotatedExportId=pdfId;
@@ -741,7 +741,7 @@ public class MainActivity extends Activity {
         progress=ProgressDialog.show(this,"",message,true,false);
         new Thread(() -> {
             String result;boolean ok;
-            try {result=task.run();ok=true;}catch(Exception e) {result="ทำรายการไม่สำเร็จ ตรวจสอบไฟล์และพื้นที่ว่าง (หากเป็นไฟล์ส่งออก อาจต้องลบไฟล์ที่บันทึกไม่ครบแล้วลองใหม่)";ok=false;}
+            try {result=task.run();ok=true;}catch(Exception|OutOfMemoryError e) {result="ทำรายการไม่สำเร็จ ตรวจสอบไฟล์และพื้นที่ว่าง (หากเป็นไฟล์ส่งออก อาจต้องลบไฟล์ที่บันทึกไม่ครบแล้วลองใหม่)";ok=false;}
             final String output=result;final boolean completed=ok;
             runOnUiThread(() -> {
                 busy=false;if(progress!=null) {progress.dismiss();progress=null;}
@@ -755,7 +755,7 @@ public class MainActivity extends Activity {
     @Override protected void onSaveInstanceState(Bundle state) {
         saveNote(false);state.putString("tab",tab);state.putString("filter",filter);state.putString("query",query);state.putBoolean("editor",editor);state.putLong("noteId",noteId);
         state.putBoolean("soapOpen",activeSoapDialog!=null&&activeSoapDialog.isShowing());
-        if(editor&&body!=null) {state.putInt("noteStart",body.getSelectionStart());state.putInt("noteEnd",body.getSelectionEnd());state.putInt("noteScroll",noteScroll.getScrollY());}
+        if(editor&&body!=null) {state.putInt("noteStart",body.getSelectionStart());state.putInt("noteEnd",body.getSelectionEnd());state.putInt("noteScroll",noteScroll.getScrollY());state.putString("expandedTable",expandedTableId);state.putInt("tablePage",tablePages.getOrDefault(expandedTableId,0));View focus=getCurrentFocus();if(focus!=null&&focus.getTag() instanceof String) state.putString("tableFocus",(String)focus.getTag());}
         state.putLong("pendingAttach",pendingAttach);state.putString("exportId",exportId);state.putString("annotatedExportId",annotatedExportId);
         if(pdf!=null) {state.putBoolean("fullscreen",fullscreen);state.putInt("pdfMode",pageView.getMode());if(textDraft!=null) state.putString("textDraft",TextBox.encode(java.util.Collections.singletonList(textDraft.get())));state.putString("pdfId",pdfId);state.putString("pdfName",pdfName);state.putInt("page",pageIndex);state.putLong("pdfReturnNote",pdfReturnNote);}
         super.onSaveInstanceState(state);
@@ -765,5 +765,5 @@ public class MainActivity extends Activity {
         if(paletteWindow!=null&&paletteWindow.isShowing()) paletteWindow.dismiss();else if(pdf!=null&&fullscreen) setFullscreen(false);else if(pdf!=null) returnFromPdf();else if(editor) {if(saveNote(false)) {keyboardOff();home();}}
         else if(!tab.equals("notes")||!filter.equals("all")) {tab="notes";filter="all";query="";home();}else super.onBackPressed();
     }
-    @Override protected void onDestroy() {if(activeSoapDialog!=null) activeSoapDialog.dismiss();if(activeTextDialog!=null) activeTextDialog.dismiss();handler.removeCallbacks(autosave);closePdf();if(progress!=null) {progress.dismiss();progress=null;}if(!busy) store.close();super.onDestroy();}
+    @Override protected void onDestroy() {if(activeSoapDialog!=null) activeSoapDialog.dismiss();if(activeTextDialog!=null) activeTextDialog.dismiss();handler.removeCallbacks(autosave);closePdf();if(progress!=null) {progress.dismiss();progress=null;}if(library!=null) library.close();if(noteSaver!=null) noteSaver.close();handler.removeCallbacks(cursorFollower);pdfWorker.shutdown();if(!busy) store.close();super.onDestroy();}
 }

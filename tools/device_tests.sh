@@ -3,10 +3,13 @@ set -euo pipefail
 mkdir -p qa-output
 collect() {
   adb pull /sdcard/Android/data/com.notepocket.notes.debug/files/screenshots qa-output/screenshots || true
+  adb pull /sdcard/Android/data/com.notepocket.notes.debug/files/performance.json qa-output/performance.json || true
   adb logcat -d -t 200 > qa-output/logcat.txt || true
   python3 - <<'PYSCREEN'
 from pathlib import Path
 import base64
+report=Path('qa-output/performance.json')
+if report.is_file(): print('NOTEPOCKET_PERFORMANCE:'+report.read_text())
 for image in sorted(Path('qa-output/screenshots').glob('*.png')):
     encoded=base64.b64encode(image.read_bytes()).decode()
     chunks=[encoded[i:i+12000] for i in range(0,len(encoded),12000)]
@@ -27,7 +30,7 @@ text=Path('qa-output/device-tests.txt').read_text()
 assert 'OK (' in text and 'FAILURES' not in text and 'INSTRUMENTATION_FAILED' not in text, text
 PY
 # Raise the version code while keeping the package and key, then install without clearing data.
-gradle assembleDebug -PnotePocketVersionCode=9
+gradle assembleDebug -PnotePocketVersionCode=10
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell am instrument -w -e class com.notepocket.app.UpdatePersistenceTest com.notepocket.notes.debug.test/androidx.test.runner.AndroidJUnitRunner | tee qa-output/update-tests.txt
 python3 - <<'PY'

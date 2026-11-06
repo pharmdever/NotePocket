@@ -15,22 +15,11 @@ public final class Backup {
     private static final String[] TABLES={"notes","docs","note_docs","page_notes","reading","page_ink","page_text","fonts","folders"};
     private Backup() {}
     public static void write(Context context,Store store,OutputStream stream) throws Exception {
-        JSONObject manifest=new JSONObject();manifest.put("format","NotePocket");manifest.put("version",6);
-        SQLiteDatabase db=store.getWritableDatabase();db.beginTransaction();
+        SQLiteDatabase db=store.getWritableDatabase();db.beginTransactionNonExclusive();
         try(ZipOutputStream zip=new ZipOutputStream(stream)) {
-            for(String table:TABLES) {
-                JSONArray rows=new JSONArray();
-                for(ContentValues row:store.query("SELECT * FROM "+table)) {
-                    JSONObject object=new JSONObject();
-                    for(String key:row.keySet()) object.put(key,row.get(key));
-                    rows.put(object);
-                }
-                if(rows.length()>10000) throw new IOException("Too many records");
-                manifest.put(table,rows);
-            }
-            byte[] json=manifest.toString().getBytes(StandardCharsets.UTF_8);
-            if(json.length>MANIFEST_LIMIT) throw new IOException("Backup metadata too large");
-            zip.putNextEntry(new ZipEntry("manifest.json"));zip.write(json);zip.closeEntry();long total=json.length;
+            zip.putNextEntry(new ZipEntry("manifest.json"));LimitedOutput metadata=new LimitedOutput(zip,MANIFEST_LIMIT);android.util.JsonWriter writer=new android.util.JsonWriter(new OutputStreamWriter(metadata,StandardCharsets.UTF_8));writer.beginObject();writer.name("format").value("NotePocket");writer.name("version").value(6);
+            for(String table:TABLES) {writer.name(table).beginArray();int count=0;try(android.database.Cursor cursor=db.rawQuery("SELECT * FROM "+table,null)) {while(cursor.moveToNext()) {if(++count>10000) throw new IOException("Too many records");writer.beginObject();for(int i=0;i<cursor.getColumnCount();i++) {writer.name(cursor.getColumnName(i));if(cursor.isNull(i)) writer.nullValue();else if(cursor.getType(i)==android.database.Cursor.FIELD_TYPE_INTEGER) writer.value(cursor.getLong(i));else writer.value(cursor.getString(i));}writer.endObject();}}writer.endArray();}
+            writer.endObject();writer.flush();zip.closeEntry();long total=metadata.count;
             for(String table:new String[]{"docs","fonts"}) for(ContentValues doc:store.query("SELECT * FROM "+table)) {
                 String id=doc.getAsString("id");validId(id);
                 File file=new File(context.getFilesDir(),id);
@@ -122,6 +111,11 @@ public final class Backup {
                 db.setTransactionSuccessful();created.clear();return notes.size();
             } finally { db.endTransaction(); }
         } finally { for(File file:created) file.delete();deleteTree(stage); }
+    }
+    private static final class LimitedOutput extends OutputStream {
+        final OutputStream target;final long limit;long count;LimitedOutput(OutputStream target,long limit) {this.target=target;this.limit=limit;}
+        public void write(int value) throws IOException {if(++count>limit) throw new IOException("Backup metadata too large");target.write(value);}
+        public void write(byte[] bytes,int offset,int length) throws IOException {if(count+length>limit) throw new IOException("Backup metadata too large");target.write(bytes,offset,length);count+=length;}
     }
     private static JSONArray rows(JSONObject manifest,String table) throws JSONException {
         if(!manifest.has(table)&&((table.equals("folders")&&manifest.getInt("version")<6)||(table.equals("page_ink")&&manifest.getInt("version")==2)||((table.equals("page_text")||table.equals("fonts"))&&manifest.getInt("version")<4))) return new JSONArray();

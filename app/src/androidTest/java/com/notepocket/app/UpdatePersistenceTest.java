@@ -13,7 +13,7 @@ import static org.junit.Assert.*;
 public class UpdatePersistenceTest {
     @Test public void notesFilesAndPageNotesSurviveApkReinstallation() throws Exception {
         Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();
-        assertEquals(9,context.getPackageManager().getPackageInfo(context.getPackageName(),0).versionCode);
+        assertEquals(10,context.getPackageManager().getPackageInfo(context.getPackageName(),0).versionCode);
         try(Store store=new Store(context)) {
             assertFalse(store.query("SELECT * FROM folders WHERE name=?","empty-upgrade-folder").isEmpty());
             ContentValues editorNote=store.query("SELECT * FROM notes WHERE title=?","Note editor upgrade fixture").get(0);

@@ -18,6 +18,9 @@ import static org.junit.Assert.*;
 
 @RunWith(AndroidJUnit4.class)
 public class UiFlowTest {
+    private TestIdle idle;
+    @Before public void registerBackgroundWork() {idle=TestIdle.register();}
+    @After public void unregisterBackgroundWork() {if(idle!=null) idle.close();}
     private Context context;
     @Test public void notesInkTextFontsLandscapeFullscreenAndSettings() throws Exception {
         context=InstrumentationRegistry.getInstrumentation().getTargetContext();androidx.test.espresso.Espresso.setFailureHandler((error,matcher)->{try {screenshot("failure");}catch(Exception ignored) {}new androidx.test.espresso.base.DefaultFailureHandler(context).handle(error,matcher);});context.deleteDatabase("notepocket.db");context.getSharedPreferences("reader",0).edit().clear().commit();String docId;

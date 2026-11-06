@@ -21,6 +21,9 @@ import static org.junit.Assert.*;
 
 @RunWith(AndroidJUnit4.class)
 public class NoteEditorTest {
+    private TestIdle idle;
+    @Before public void registerBackgroundWork() {idle=TestIdle.register();}
+    @After public void unregisterBackgroundWork() {if(idle!=null) idle.close();}
     private final Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();
     @Test public void richFormattingAndTablesSurviveBackupAndOldNotesStillOpen() throws Exception {
         context.deleteDatabase("editor-test.db");

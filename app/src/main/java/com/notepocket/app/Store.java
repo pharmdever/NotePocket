@@ -8,7 +8,7 @@ import java.util.*;
 /** Additive, transactional schema migration; never drops user data. */
 public final class Store extends SQLiteOpenHelper {
     public Store(Context context) { this(context, "notepocket.db"); }
-    Store(Context context, String name) { super(context,name,null,6); }
+    Store(Context context, String name) { super(context,name,null,7);setWriteAheadLoggingEnabled(true); }
     @Override public void onCreate(SQLiteDatabase db) { migrate(db); }
     @Override public void onUpgrade(SQLiteDatabase db,int oldVersion,int newVersion) { migrate(db); }
     private void migrate(SQLiteDatabase db) {
@@ -28,7 +28,9 @@ public final class Store extends SQLiteOpenHelper {
         db.execSQL("CREATE TABLE IF NOT EXISTS fonts (id TEXT PRIMARY KEY, name TEXT NOT NULL, size INTEGER NOT NULL)");
         db.execSQL("CREATE TABLE IF NOT EXISTS folders(name TEXT PRIMARY KEY NOT NULL)");
         db.execSQL("INSERT OR IGNORE INTO folders(name) VALUES('ทั่วไป')");db.execSQL("INSERT OR IGNORE INTO folders(name) SELECT DISTINCT folder FROM notes");
-        db.execSQL("CREATE INDEX IF NOT EXISTS notes_order ON notes(deleted,pinned,updated)");
+        db.execSQL("DROP INDEX IF EXISTS notes_order");
+        db.execSQL("CREATE INDEX IF NOT EXISTS notes_page ON notes(deleted,pinned DESC,updated DESC,id DESC)");
+        db.execSQL("CREATE INDEX IF NOT EXISTS notes_folder_page ON notes(folder,deleted,pinned DESC,updated DESC,id DESC)");
     }
     private void addColumn(SQLiteDatabase db,String table,String name,String type) {
         try(Cursor c=db.rawQuery("PRAGMA table_info("+table+")",null)) {
@@ -55,20 +57,14 @@ public final class Store extends SQLiteOpenHelper {
         List<ContentValues> rows=query("SELECT * FROM notes WHERE id=?",""+id);
         return rows.isEmpty()?null:rows.get(0);
     }
-    public long save(long id,String title,String body,String rich,String folder) {
-        createFolder(folder);ContentValues v=new ContentValues(); v.put("title",title.trim().isEmpty()?"ไม่มีชื่อ":title.trim());
-        v.put("body",body); v.put("rich",rich); v.put("folder",folder); v.put("updated",System.currentTimeMillis());
-        if(id<0) return getWritableDatabase().insertOrThrow("notes",null,v);
-        if(getWritableDatabase().update("notes",v,"id=?",new String[]{""+id})!=1) throw new IllegalStateException("Note missing");
-        return id;
+    private long saveRecord(long id,ContentValues values,String folder) {
+        SQLiteDatabase db=getWritableDatabase();db.beginTransactionNonExclusive();try {createFolder(folder);values.put("folder",folder);values.put("updated",System.currentTimeMillis());if(id<0) id=db.insertOrThrow("notes",null,values);else if(db.update("notes",values,"id=?",new String[]{""+id})!=1) throw new IllegalStateException("Note missing");db.setTransactionSuccessful();return id;}finally {db.endTransaction();}
     }
-    public long save(long id,String title,String body,String rich,String folder,String tables) {
-        String validated=NoteTable.encode(NoteTable.decode(tables));SQLiteDatabase db=getWritableDatabase();db.beginTransaction();
-        try {long saved=save(id,title,body,rich,folder);ContentValues v=new ContentValues();v.put("tables",validated);if(db.update("notes",v,"id=?",new String[]{""+saved})!=1) throw new IllegalStateException("Note missing");db.setTransactionSuccessful();return saved;}finally {db.endTransaction();}
-    }
-    public long save(long id,String title,String body,String rich,String folder,String tables,String soap) {
-        String validated=new SoapDraft(soap).json();SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try {long saved=save(id,title,body,rich,folder,tables);ContentValues v=new ContentValues();v.put("soap",validated);if(db.update("notes",v,"id=?",new String[]{""+saved})!=1) throw new IllegalStateException("Note missing");db.setTransactionSuccessful();return saved;}finally {db.endTransaction();}
-    }
+    private ContentValues values(String title,String body,String rich) {ContentValues v=new ContentValues();v.put("title",title.trim().isEmpty()?"ไม่มีชื่อ":title.trim());v.put("body",body);v.put("rich",rich);return v;}
+    public long save(long id,String title,String body,String rich,String folder) {return saveRecord(id,values(title,body,rich),folder);}
+    public long save(long id,String title,String body,String rich,String folder,String tables) {ContentValues v=values(title,body,rich);v.put("tables",NoteTable.encode(NoteTable.decode(tables)));return saveRecord(id,v,folder);}
+    public long save(long id,String title,String body,String rich,String folder,String tables,String soap) {ContentValues v=values(title,body,rich);v.put("tables",NoteTable.encode(NoteTable.decode(tables)));v.put("soap",new SoapDraft(soap).json());return saveRecord(id,v,folder);}
+    long saveSnapshot(long id,NoteSnapshot snapshot) {ContentValues v=values(snapshot.title,snapshot.body.toString(),NoteFormat.encode(snapshot.body));v.put("tables",NoteTable.encode(snapshot.tables));v.put("soap",snapshot.soap);return saveRecord(id,v,snapshot.folder);}
     public void createFolder(String name) {if(name==null||name.trim().isEmpty()||name.length()>80) throw new IllegalArgumentException("Invalid folder");ContentValues v=new ContentValues();v.put("name",name.trim());getWritableDatabase().insertWithOnConflict("folders",null,v,SQLiteDatabase.CONFLICT_IGNORE);}
     public List<ContentValues> folders() {return query("SELECT f.name,COUNT(n.id) AS count FROM folders f LEFT JOIN notes n ON n.folder=f.name AND n.deleted=0 GROUP BY f.name ORDER BY f.name COLLATE NOCASE");}
     public void renameFolder(String old,String name) {if(old.equals("ทั่วไป")||name==null||name.trim().isEmpty()||name.trim().length()>80) throw new IllegalArgumentException("Invalid folder");name=name.trim();if(old.equals(name)) return;SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try {if(!query("SELECT name FROM folders WHERE name=?",name).isEmpty()) throw new IllegalArgumentException("Folder exists");ContentValues v=new ContentValues();v.put("name",name);if(db.update("folders",v,"name=?",new String[]{old})!=1) throw new IllegalArgumentException("Missing folder");v.clear();v.put("folder",name);db.update("notes",v,"folder=?",new String[]{old});db.setTransactionSuccessful();}finally {db.endTransaction();}}

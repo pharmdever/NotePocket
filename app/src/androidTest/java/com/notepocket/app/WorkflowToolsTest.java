@@ -20,6 +20,9 @@ import static org.junit.Assert.*;
 
 @RunWith(AndroidJUnit4.class)
 public class WorkflowToolsTest {
+    private TestIdle idle;
+    @Before public void registerBackgroundWork() {idle=TestIdle.register();}
+    @After public void unregisterBackgroundWork() {if(idle!=null) idle.close();}
     private final Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();
     @Test public void listContinuationStopsOnBlankAndKeepsOrdinaryText() {
         for(String[] test:new String[][]{{"1. First\n","1. First\n2. "},{"• หนึ่ง\n","• หนึ่ง\n• "},{"☑ done\n","☑ done\n☐ "},{"- item\n","- item\n- "},{"1. One\n2. \n","1. One\n"},{"☐ \n",""}}) {SpannableStringBuilder text=new SpannableStringBuilder(test[0]);assertTrue(NoteLists.afterEnter(text,text.length()-1,0,1));assertEquals(test[1],text.toString());}

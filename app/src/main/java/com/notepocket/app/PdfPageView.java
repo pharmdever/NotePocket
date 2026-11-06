@@ -47,6 +47,9 @@ public final class PdfPageView extends View {
     private int hitGlyph(float u,float v) {int nearest=-1;float distance=.0025f;for(int i=0;i<glyphs.size();i++) {RectF b=glyphs.get(i).box;if(b.contains(u,v)) return i;float d=(b.centerX()-u)*(b.centerX()-u)+(b.centerY()-v)*(b.centerY()-v);if(d<distance) {distance=d;nearest=i;}}return nearest;}
     private float[] normalized(float x,float y) {RectF r=pageRect();return new float[]{Math.max(0,Math.min(.999f,(x-r.left)/r.width())),Math.max(0,Math.min(.999f,(y-r.top)/r.height()))};}
     private Bitmap bitmap;
+    private final IdentityHashMap<Ink,Path> paths=new IdentityHashMap<>();private float pathWidth,pathHeight;
+    public void trimCaches() {paths.clear();for(TextBox box:boxes) box.clearLayout();}
+    public void releaseImage() {bitmap=null;glyphs.clear();clearSelection();trimCaches();invalidate();}
     private float zoom=1,offsetX,offsetY,lastX,lastY;
     private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
     private final Paint inkPaint=new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -76,9 +79,9 @@ public final class PdfPageView extends View {
     public int getMode() {return mode;}
     public void setInkColor(int color) {if(mode==HIGHLIGHT) highlightColor=color;else penColor=color;}
     public void setWidthFactor(float value) {widthFactor=value;}
-    public void setDrawing(String json) {strokes=Ink.decode(json);active.clear();drawing=false;redo.clear();invalidate();}
+    public void setDrawing(String json) {paths.clear();strokes=Ink.decode(json);active.clear();drawing=false;redo.clear();invalidate();}
     public String getDrawing() {return Ink.encode(strokes);}
-    public void setPage(Bitmap b) {bitmap=b;active.clear();drawing=false;strokes.clear();boxes.clear();glyphs.clear();clearSelection();redo.clear();needsPosition=true;reset();}
+    public void setPage(Bitmap b) {paths.clear();bitmap=b;active.clear();drawing=false;strokes.clear();boxes.clear();glyphs.clear();clearSelection();redo.clear();needsPosition=true;reset();}
     public void reset() {zoom=1;offsetX=0;offsetY=bitmap==null?0:Math.max(0,(bitmap.getHeight()*baseScale()-getHeight())/2f);if(getWidth()>0&&getHeight()>0) needsPosition=false;invalidate();}
     public void zoomBy(float factor) {commitGesture();changeZoom(zoom*factor,getWidth()/2f,getHeight()/2f);}
     public boolean canUndo() {return !strokes.isEmpty();}
@@ -95,7 +98,7 @@ public final class PdfPageView extends View {
         commitGesture();List<Ink> old=strokes;strokes=new ArrayList<>();if(persist()) redo.clear();else strokes=old;invalidate();
     }
     private boolean persist() {
-        try {return listener==null||listener.save(Ink.encode(strokes));}
+        try {boolean saved=listener==null||listener.save(Ink.encode(strokes));if(saved) paths.keySet().retainAll(strokes);return saved;}
         catch(IllegalArgumentException e) {android.widget.Toast.makeText(getContext(),"หน้านี้มีเส้นจำนวนมากแล้ว กรุณาใช้หน้าอื่น",android.widget.Toast.LENGTH_LONG).show();return false;}
     }
     public void commitGesture() {
@@ -123,7 +126,7 @@ public final class PdfPageView extends View {
     }
     @Override protected void onSizeChanged(int w,int h,int oldw,int oldh) {if(needsPosition) reset();else clamp();}
     @Override protected void onDraw(Canvas canvas) {
-        super.onDraw(canvas);if(bitmap==null||bitmap.isRecycled()) return;if(needsPosition) reset();RectF rect=pageRect();
+        super.onDraw(canvas);if(bitmap==null||bitmap.isRecycled()) return;if(needsPosition) reset();RectF rect=pageRect();if(pathWidth!=rect.width()||pathHeight!=rect.height()) {paths.clear();pathWidth=rect.width();pathHeight=rect.height();}
         Ink pending=null;if(drawing&&!active.isEmpty()) {float[] points=new float[active.size()];for(int i=0;i<points.length;i++) points[i]=active.get(i);pending=new Ink(mode==HIGHLIGHT,mode==HIGHLIGHT?highlightColor:penColor,(mode==HIGHLIGHT?0.028f:0.004f)*widthFactor,points);}
         canvas.save();canvas.clipRect(rect);boolean highlights=pending!=null&&pending.highlight;for(Ink stroke:strokes) highlights|=stroke.highlight;
         if(highlights) {
@@ -139,10 +142,11 @@ public final class PdfPageView extends View {
     private void drawStroke(Canvas canvas,RectF rect,Ink stroke) {
         inkPaint.setColor(stroke.color);inkPaint.setAlpha(stroke.highlight?highlightAlpha:255);inkPaint.setStrokeWidth(stroke.width*Math.min(rect.width(),rect.height()));
         inkPaint.setXfermode(null);
-        float[] p=stroke.points;Path path=new Path();path.moveTo(rect.left+p[0]*rect.width(),rect.top+p[1]*rect.height());
-        if(p.length==2) canvas.drawPoint(rect.left+p[0]*rect.width(),rect.top+p[1]*rect.height(),inkPaint);
-        else {for(int i=2;i<p.length;i+=2) path.lineTo(rect.left+p[i]*rect.width(),rect.top+p[i+1]*rect.height());canvas.drawPath(path,inkPaint);}
+        float[] p=stroke.points;canvas.save();canvas.translate(rect.left,rect.top);
+        if(p.length==2) canvas.drawPoint(p[0]*rect.width(),p[1]*rect.height(),inkPaint);
+        else {Path path=paths.get(stroke);if(path==null) {path=new Path();path.moveTo(p[0]*rect.width(),p[1]*rect.height());for(int i=2;i<p.length;i+=2) path.lineTo(p[i]*rect.width(),p[i+1]*rect.height());if(strokes.contains(stroke)) {if(paths.size()>=Ink.MAX_STROKES) paths.clear();paths.put(stroke,path);}}canvas.drawPath(path,inkPaint);}canvas.restore();
     }
+
     private void point(float x,float y) {
         if(active.size()>=4000) return;RectF rect=pageRect();if(rect.width()<=0||rect.height()<=0) return;
         float u=Math.max(0,Math.min(1,(x-rect.left)/rect.width())),v=Math.max(0,Math.min(1,(y-rect.top)/rect.height()));
@@ -150,6 +154,7 @@ public final class PdfPageView extends View {
         active.add(u);active.add(v);
     }
     @Override public boolean onTouchEvent(MotionEvent e) {
+        if(!isEnabled()) return true;
         if(mode==READ) gestures.onTouchEvent(e);
         scale.onTouchEvent(e);
         switch(e.getActionMasked()) {

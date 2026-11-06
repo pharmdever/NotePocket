@@ -9,6 +9,7 @@ import java.util.*;
 public final class Fonts {
     private static final LruCache<String,Typeface> CACHE=new LruCache<>(12);
     private Fonts() {}
+    public static void trimMemory() {synchronized(CACHE) {CACHE.evictAll();}}
     public static Typeface typeface(Context context,String id) {
         if("serif".equals(id)) return Typeface.SERIF;if("mono".equals(id)) return Typeface.MONOSPACE;if("sans".equals(id)) return Typeface.DEFAULT;
         synchronized(CACHE) {Typeface font=CACHE.get(id);if(font!=null) return font;try {font=Typeface.createFromFile(new File(context.getFilesDir(),id));CACHE.put(id,font);return font;}catch(RuntimeException error) {return Typeface.DEFAULT;}}

@@ -11,6 +11,7 @@ public final class TextBox {
     public final String id,text,font;
     public final float x,y,width,size;
     public final int color;
+    private StaticLayout cachedLayout;private int cachedPixels;private float cachedSize;
     public TextBox(String id,String text,String font,float x,float y,float width,float size,int color) {
         if(id==null||!id.matches("[A-Za-z0-9-]{1,80}")||text==null||text.length()>2000||font==null||!font.matches("[A-Za-z0-9-]{1,80}")) throw new IllegalArgumentException("Invalid text box");
         for(float value:new float[]{x,y,width,size}) if(!Float.isFinite(value)) throw new IllegalArgumentException();
@@ -29,9 +30,11 @@ public final class TextBox {
         catch(JSONException e) {throw new IllegalArgumentException(e);}
     }
     public StaticLayout layout(Context context,float pageWidth,float pageHeight) {
-        TextPaint paint=new TextPaint(Paint.ANTI_ALIAS_FLAG);paint.setColor(color);paint.setTextSize(size*Math.min(pageWidth,pageHeight));paint.setTypeface(Fonts.typeface(context,font));
-        int pixels=Math.max(1,Math.round(Math.min(width,1-x)*pageWidth));return StaticLayout.Builder.obtain(text,0,text.length(),paint,pixels).setIncludePad(false).build();
+        int pixels=Math.max(1,Math.round(Math.min(width,1-x)*pageWidth));float textSize=size*Math.min(pageWidth,pageHeight);if(cachedLayout!=null&&cachedPixels==pixels&&cachedSize==textSize) return cachedLayout;
+        TextPaint paint=new TextPaint(Paint.ANTI_ALIAS_FLAG);paint.setColor(color);paint.setTextSize(textSize);paint.setTypeface(Fonts.typeface(context,font));cachedPixels=pixels;cachedSize=textSize;cachedLayout=StaticLayout.Builder.obtain(text,0,text.length(),paint,pixels).setIncludePad(false).build();return cachedLayout;
     }
+    public void clearLayout() {cachedLayout=null;}
+
     public RectF bounds(Context context,RectF page) {StaticLayout layout=layout(context,page.width(),page.height());return new RectF(page.left+x*page.width(),page.top+y*page.height(),page.left+x*page.width()+layout.getWidth(),page.top+y*page.height()+layout.getHeight());}
     public void draw(Context context,Canvas canvas,RectF page) {StaticLayout layout=layout(context,page.width(),page.height());canvas.save();canvas.translate(page.left+x*page.width(),page.top+y*page.height());layout.draw(canvas);canvas.restore();}
 }

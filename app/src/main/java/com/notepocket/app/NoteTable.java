@@ -11,6 +11,7 @@ public final class NoteTable {
     public final List<List<String>> cells=new ArrayList<>();
     public NoteTable(int rows,int cols) {id=UUID.randomUUID().toString();if(rows<1||rows>MAX_ROWS||cols<1||cols>MAX_COLS) throw new IllegalArgumentException();for(int c=0;c<cols;c++) widths.add(150);for(int r=0;r<rows;r++) {List<String> line=new ArrayList<>();for(int c=0;c<cols;c++) line.add("");cells.add(line);}}
     private NoteTable(String id) {this.id=id;}
+    public static List<NoteTable> copy(List<NoteTable> source) {List<NoteTable> out=new ArrayList<>();for(NoteTable original:source) {NoteTable table=new NoteTable(original.id);table.widths.addAll(original.widths);for(List<String> row:original.cells) table.cells.add(new ArrayList<>(row));out.add(table);}return out;}
     public int columns() {return cells.get(0).size();}
     public int width(int column) {return column<widths.size()?widths.get(column):150;}
     public void insertRow(int at) {if(cells.size()>=MAX_ROWS||at<0||at>cells.size()) throw new IllegalArgumentException();cells.add(at,new ArrayList<>(Collections.nCopies(columns(),"")));}
