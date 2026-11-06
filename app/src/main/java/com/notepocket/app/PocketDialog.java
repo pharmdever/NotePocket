@@ -36,11 +36,12 @@ public final class PocketDialog {
         private final Context context;private final CharSequence[] items;
         MenuAdapter(Context context,CharSequence[] items) {this.context=context;this.items=items.clone();}
         public int getCount() {return items.length;}public CharSequence getItem(int at) {return items[at];}public long getItemId(int at) {return at;}
+        private int dp(int value) {return PocketTheme.dp(context,value);}
         public View getView(int at,View recycled,ViewGroup parent) {
-            int d=PocketTheme.dp(context,1);String label=items[at].toString();boolean destructive=label.contains("ลบ")||label.equals("ถังขยะ")||label.contains("ย้ายเข้าถังขยะ");
-            LinearLayout outer=new LinearLayout(context);outer.setPadding(0,3*d,0,3*d);LinearLayout row=new LinearLayout(context);row.setGravity(Gravity.CENTER_VERTICAL);row.setPadding(8*d,6*d,12*d,6*d);row.setMinimumHeight(60*d);row.setBackground(PocketTheme.shape(context,destructive?0xffF8E8E2:at%3==1?PocketTheme.CREAM:PocketTheme.SAGE,16,false));outer.addView(row,new LinearLayout.LayoutParams(-1,-2));
-            ReaderIconButton glyph=new ReaderIconButton(context,PocketTheme.symbol(label),label,null,()->{});glyph.setClickable(false);glyph.setFocusable(false);glyph.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);row.addView(glyph,new LinearLayout.LayoutParams(40*d,40*d));
-            TextView text=new TextView(context);text.setId(android.R.id.text1);text.setText(items[at]);text.setTextSize(16);text.setTextColor(destructive?PocketTheme.RED:PocketTheme.INK);text.setPadding(10*d,4*d,8*d,4*d);row.addView(text,new LinearLayout.LayoutParams(0,-2,1));
+            String label=items[at].toString();boolean destructive=label.contains("ลบ")||label.equals("ถังขยะ")||label.contains("ย้ายเข้าถังขยะ");
+            LinearLayout outer=new LinearLayout(context);outer.setPadding(0,dp(3),0,dp(3));LinearLayout row=new LinearLayout(context);row.setGravity(Gravity.CENTER_VERTICAL);row.setPadding(dp(8),dp(6),dp(12),dp(6));row.setMinimumHeight(dp(60));row.setBackground(PocketTheme.shape(context,destructive?0xffF8E8E2:at%3==1?PocketTheme.CREAM:PocketTheme.SAGE,16,false));outer.addView(row,new LinearLayout.LayoutParams(-1,-2));
+            ReaderIconButton glyph=new ReaderIconButton(context,PocketTheme.symbol(label),label,null,()->{});glyph.setClickable(false);glyph.setFocusable(false);glyph.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);row.addView(glyph,new LinearLayout.LayoutParams(dp(40),dp(40)));
+            TextView text=new TextView(context);text.setId(android.R.id.text1);text.setText(items[at]);text.setTextSize(16);text.setTextColor(destructive?PocketTheme.RED:PocketTheme.INK);text.setPadding(dp(10),dp(4),dp(8),dp(4));row.addView(text,new LinearLayout.LayoutParams(0,-2,1));
             TextView arrow=new TextView(context);arrow.setText("›");arrow.setTextSize(22);arrow.setTextColor(PocketTheme.MUTED);arrow.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);row.addView(arrow);return outer;
         }
     }
