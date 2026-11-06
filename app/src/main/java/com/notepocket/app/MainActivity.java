@@ -751,6 +751,12 @@ public class MainActivity extends Activity {
             });
         },"NotePocket-IO").start();
     }
+    public boolean isWorkIdle() {return (library==null||editor||pdf!=null||!library.isLoading())&&(noteSaver==null||!noteSaver.isRunning())&&!pdfRendering;}
+    @Override protected void onResume() {super.onResume();if(libraryReleased&&library!=null&&!editor&&pdf==null) {libraryReleased=false;library.reload();}if(pdfImageReleased&&pdf!=null) renderPage(pageIndex);}
+    @Override public void onTrimMemory(int level) {
+        super.onTrimMemory(level);Fonts.trimMemory();noteHistory.clear();if(editor) updateNoteTools();if(pageView!=null) pageView.trimCaches();
+        if(level>=TRIM_MEMORY_UI_HIDDEN) {if(library!=null&&!editor&&pdf==null) {library.releaseRows();libraryReleased=true;}if(pdf!=null&&pageView!=null) {pageView.commitGesture();pdfGeneration++;pdfRendering=false;pageView.releaseImage();if(pageBitmap!=null) {pageBitmap.recycle();pageBitmap=null;}pdfImageReleased=true;}}
+    }
     @Override protected void onPause() {if(pageView!=null) pageView.commitGesture();saveNote(false);super.onPause();}
     @Override protected void onSaveInstanceState(Bundle state) {
         saveNote(false);state.putString("tab",tab);state.putString("filter",filter);state.putString("query",query);state.putBoolean("editor",editor);state.putLong("noteId",noteId);
