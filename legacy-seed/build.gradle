@@ -1,0 +1,25 @@
+// Independent instrumentation keeps its runtime libraries when targeting an older APK.
+plugins { id 'com.android.application' }
+android {
+    namespace 'com.notepocket.seed'
+    compileSdk 35
+    defaultConfig { applicationId 'com.notepocket.notes.seed'; minSdk 26; targetSdk 35; versionCode 1; versionName '1' }
+    signingConfigs {
+        release {
+            if (System.getenv('NP_KEYSTORE')) {
+                storeFile file(System.getenv('NP_KEYSTORE'))
+                storePassword System.getenv('NP_STORE_PASSWORD')
+                keyAlias System.getenv('NP_KEY_ALIAS')
+                keyPassword System.getenv('NP_STORE_PASSWORD')
+            }
+        }
+    }
+    buildTypes { debug { if (System.getenv('NP_KEYSTORE')) signingConfig signingConfigs.release } }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    packaging { resources.excludes += ['META-INF/DEPENDENCIES'] }
+}
+dependencies {
+    implementation 'androidx.test:runner:1.6.2'
+    implementation 'androidx.test.ext:junit:1.2.1'
+    implementation 'androidx.test:core:1.6.1'
+}

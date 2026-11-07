@@ -32,7 +32,7 @@ jobs:
           gradle-version: '8.9'
       - name: Compile and lint
         run: |
-          gradle assembleDebug assembleDebugAndroidTest lintDebug || {
+          gradle :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug || {
             cat app/build/intermediates/lint_intermediate_text_report/debug/lintReportDebug/lint-results-debug.txt
             exit 1
           }
@@ -41,7 +41,7 @@ jobs:
         run: python3 tools/restore_signing.py
       - name: Build signed release and release upgrade tests
         if: env.ANDROID_SIGNING_BUNDLE != ''
-        run: gradle assembleRelease assembleReleaseAndroidTest lintRelease -PtestRelease=true
+        run: gradle :app:assembleRelease :app:assembleReleaseAndroidTest :app:lintRelease :legacy-seed:assembleDebug -PtestRelease=true
       - name: Download previous signed release for upgrade verification
         if: env.ANDROID_SIGNING_BUNDLE != ''
         env:

@@ -13,6 +13,9 @@ if diagnostics.is_file():
     lines=diagnostics.read_text(errors='replace').splitlines()
     interesting=[line for line in lines if any(word in line for word in ['AutofillManager','FAILED BINDER TRANSACTION','DeadSystem','FATAL EXCEPTION','OutOfMemoryError','ANR in'])]
     for line in interesting[-80:]: print('NOTEPOCKET_DIAGNOSTIC:'+line)
+    for i,line in enumerate(lines):
+        if 'FATAL EXCEPTION' in line:
+            for context in lines[max(0,i-2):i+40]: print('NOTEPOCKET_CRASH:'+context)
 report=Path('qa-output/performance.json')
 if report.is_file(): print('NOTEPOCKET_PERFORMANCE:'+report.read_text())
 for image in sorted(Path('qa-output/screenshots').glob('*.png')):
@@ -36,7 +39,7 @@ text=Path('qa-output/device-tests.txt').read_text()
 assert 'OK (' in text and 'FAILURES' not in text and 'INSTRUMENTATION_FAILED' not in text, text
 PY
 # Raise the version code while keeping the package and key, then install without clearing data.
-gradle assembleDebug -PnotePocketVersionCode=12
+gradle :app:assembleDebug -PnotePocketVersionCode=12
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell am instrument -w -e class com.notepocket.app.UpdatePersistenceTest com.notepocket.notes.debug.test/androidx.test.runner.AndroidJUnitRunner | tee qa-output/update-tests.txt
 python3 - <<'PY'
@@ -47,14 +50,15 @@ PY
 
 if [ -n "${NP_KEYSTORE:-}" ]; then
   adb install -r previous-release/app-release.apk
-  adb install -r app/build/outputs/apk/androidTest/release/app-release-androidTest.apk
-  adb shell am instrument -w -e class com.notepocket.app.LegacyUpgradeSeedTest com.notepocket.notes.test/androidx.test.runner.AndroidJUnitRunner | tee qa-output/legacy-release-seed.txt
+  adb install -r -t legacy-seed/build/outputs/apk/debug/legacy-seed-debug.apk
+  adb shell am instrument -w -e class com.notepocket.app.LegacyUpgradeSeedTest com.notepocket.notes.seed/androidx.test.runner.AndroidJUnitRunner | tee qa-output/legacy-release-seed.txt
   python3 - <<'PYSEED'
 from pathlib import Path
 text=Path('qa-output/legacy-release-seed.txt').read_text()
 assert 'OK (' in text and 'FAILURES' not in text and 'INSTRUMENTATION_FAILED' not in text, text
 PYSEED
   adb install -r app/build/outputs/apk/release/app-release.apk
+  adb install -r app/build/outputs/apk/androidTest/release/app-release-androidTest.apk
   adb shell am instrument -w -e class com.notepocket.app.ReleaseUpgradeTest com.notepocket.notes.test/androidx.test.runner.AndroidJUnitRunner | tee qa-output/signed-release-upgrade.txt
   python3 - <<'PYRELEASE'
 from pathlib import Path

@@ -1,0 +1,4 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application android:label="NotePocket upgrade test fixture" android:testOnly="true" />
+    <instrumentation android:name="androidx.test.runner.AndroidJUnitRunner" android:targetPackage="com.notepocket.notes" />
+</manifest>
