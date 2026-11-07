@@ -42,7 +42,7 @@ public class NoteEditorTest {
         androidx.test.espresso.Espresso.setFailureHandler((error,matcher)->{try {screenshot("editor-failure");}catch(Exception ignored) {}new androidx.test.espresso.base.DefaultFailureHandler(context).handle(error,matcher);});
         long id;try(Store store=new Store(context)) {id=store.save(-1,"เครื่องมือโน้ตรุ่นใหม่","Study notes\nแผนทบทวนบทเรียน","","เรียน");}
         try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)) {
-            onView(withText("เครื่องมือโน้ตรุ่นใหม่")).perform(click());onView(withHint("เขียนสิ่งที่อยากจดจำ…")).perform(click());
+            onView(withText("เครื่องมือโน้ตรุ่นใหม่")).perform(click());onView(withHint("เขียนสิ่งที่อยากจดจำ…")).perform(click());awaitKeyboard(scenario);
             select(scenario,0,5);tool("ตัวหนา");tool("ขีดเส้นใต้");tool("สีข้อความ");onView(withText("แดง")).inRoot(androidx.test.espresso.matcher.RootMatchers.isDialog()).perform(click());tool("หัวข้อ");
             tool("แทรกตาราง");onView(withText("แทรก")).inRoot(androidx.test.espresso.matcher.RootMatchers.isDialog()).perform(click());onView(withContentDescription("ตาราง 1 แถว 1 คอลัมน์ 1")).perform(replaceText("รายการ"),closeSoftKeyboard());
             onView(withContentDescription("ตาราง 1 แถว 2 คอลัมน์ 1")).perform(scrollTo(),replaceText("ทบทวนบทเรียน"),closeSoftKeyboard());screenshot("07-note-table-icons");
