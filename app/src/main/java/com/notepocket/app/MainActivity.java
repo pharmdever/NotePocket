@@ -131,13 +131,13 @@ public class MainActivity extends Activity {
     private void home() {
         if(editor&&!saveNote(false)) return;
         handler.removeCallbacks(autosave);if(library!=null) {library.close();library=null;}closePdf();editor=false;releaseEditorViews();pdfReturnNote=-1;screen();
-        LinearLayout heading=horizontal(root);ReaderIconButton brand=icon("read","NotePocket",null,()->{});brand.setSelected(true);brand.setClickable(false);brand.setFocusable(false);brand.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);heading.addView(brand,new LinearLayout.LayoutParams(dp(48),dp(48)));
+        LinearLayout heading=horizontal(root);ReaderIconButton brand=icon("read","NotePocket",null,()->{});brand.setSelected(true);brand.setDecorative();heading.addView(brand,new LinearLayout.LayoutParams(dp(48),dp(48)));
         TextView wordmark=strong("NotePocket",26);wordmark.setPadding(dp(10),0,0,0);heading.addView(wordmark,new LinearLayout.LayoutParams(0,-2,1));
-        heading.addView(pill("● ออฟไลน์",PocketTheme.SAGE,GREEN));
-        root.addView(text(tab.equals("files")?"เอกสารพร้อมอ่าน ใกล้โน้ตของคุณ":tab.equals("settings")?"พื้นที่ของคุณ ในแบบที่คุณเลือก":"ทุกความคิด อยู่ใกล้มือ",14,MUTED));gap(root,12);
+        heading.addView(pill("ออฟไลน์",PocketTheme.SAGE,GREEN));
+        if(!tab.equals("notes")) root.addView(text(tab.equals("files")?"เอกสารพร้อมอ่าน ใกล้โน้ตของคุณ":"พื้นที่ของคุณ ในแบบที่คุณเลือก",14,MUTED));gap(root,12);
         if(tab.equals("settings")) settings();
         else {
-            LinearLayout searchBox=horizontal(root);searchBox.setPadding(dp(6),0,dp(8),0);searchBox.setBackground(PocketTheme.shape(this,PocketTheme.SURFACE,18,true));ReaderIconButton searchGlyph=icon("find","ค้นหา",null,()->{});searchGlyph.setClickable(false);searchGlyph.setFocusable(false);searchGlyph.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);searchBox.addView(searchGlyph,new LinearLayout.LayoutParams(dp(40),dp(40)));
+            LinearLayout searchBox=horizontal(root);searchBox.setPadding(dp(6),0,dp(8),0);searchBox.setBackground(PocketTheme.shape(this,PocketTheme.SURFACE,18,true));ReaderIconButton searchGlyph=icon("find","ค้นหา",null,()->{});searchGlyph.setDecorative();searchBox.addView(searchGlyph,new LinearLayout.LayoutParams(dp(40),dp(40)));
             EditText search=input(tab.equals("files")?"ค้นหาเอกสาร…":"ค้นหาในชื่อและเนื้อหา…",true);search.setTextSize(15);search.setBackgroundColor(Color.TRANSPARENT);search.setText(query);searchBox.addView(search,new LinearLayout.LayoutParams(0,dp(52),1));gap(root,10);
             LinearLayout commands=horizontal(root);
             if(tab.equals("files")) action(commands,"＋ นำเข้าไฟล์",() -> pickDocument(-1),true);
@@ -151,14 +151,14 @@ public class MainActivity extends Activity {
         }
         gap(root,8);LinearLayout nav=horizontal(root);nav.setPadding(dp(4),dp(4),dp(4),dp(4));nav.setBackground(PocketTheme.shape(this,PocketTheme.SURFACE,24,true));
         for(String key:new String[]{"notes","files","settings"}) {
-            String label=key.equals("notes")?"โน้ต":key.equals("files")?"เอกสาร":"ตั้งค่า";LinearLayout slot=vertical();slot.setGravity(Gravity.CENTER);slot.setPadding(0,dp(4),0,dp(4));if(tab.equals(key)) slot.setBackground(background(PocketTheme.SAGE,18));
-            ReaderIconButton glyph=icon(key.equals("notes")?"read":key.equals("files")?"files":"settings",label,null,()->{});glyph.setClickable(false);glyph.setFocusable(false);glyph.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);slot.addView(glyph,new LinearLayout.LayoutParams(dp(36),dp(32)));
-            TextView caption=text(label,12,tab.equals(key)?GREEN:MUTED);caption.setGravity(Gravity.CENTER);caption.setTypeface(null,tab.equals(key)?Typeface.BOLD:Typeface.NORMAL);slot.addView(caption);slot.setOnClickListener(v->{if(!busy) {tab=key;query="";home();}});slot.setFocusable(true);slot.setContentDescription(label);caption.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);nav.addView(slot,new LinearLayout.LayoutParams(0,dp(64),1));
+            String label=key.equals("notes")?"โน้ต":key.equals("files")?"เอกสาร":"ตั้งค่า";LinearLayout slot=vertical();slot.setGravity(Gravity.CENTER);slot.setPadding(0,dp(4),0,dp(4));slot.setDescendantFocusability(ViewGroup.FOCUS_BLOCK_DESCENDANTS);slot.setSelected(tab.equals(key));slot.setBackground(PocketTheme.ripple(this,tab.equals(key)?PocketTheme.SAGE:PocketTheme.SURFACE,18));
+            ReaderIconButton glyph=icon(key.equals("notes")?"read":key.equals("files")?"files":"settings",label,null,()->{});glyph.setDecorative();slot.addView(glyph,new LinearLayout.LayoutParams(dp(36),dp(32)));
+            TextView caption=text(label,12,tab.equals(key)?GREEN:MUTED);caption.setGravity(Gravity.CENTER);caption.setTypeface(null,tab.equals(key)?Typeface.BOLD:Typeface.NORMAL);slot.addView(caption);slot.setOnClickListener(v->{if(!busy&&!tab.equals(key)) {keyboardOff();tab=key;query="";home();}});slot.setFocusable(true);slot.setContentDescription(label);caption.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);nav.addView(slot,new LinearLayout.LayoutParams(0,dp(64),1));
         }
     }
     private TextView pill(String label,int color,int ink) {TextView view=text(label,12,ink);view.setPadding(dp(10),dp(5),dp(10),dp(5));view.setBackground(background(color,12));view.setSingleLine();view.setEllipsize(TextUtils.TruncateAt.END);return view;}
     private void quickAction(LinearLayout parent,String symbol,String label,int color,Runnable action) {
-        LinearLayout row=horizontal(null);row.setGravity(Gravity.CENTER_VERTICAL);row.setPadding(dp(6),dp(3),dp(10),dp(3));row.setBackground(PocketTheme.ripple(this,color,18));ReaderIconButton glyph=icon(symbol,label,null,()->{});glyph.setClickable(false);glyph.setFocusable(false);glyph.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);row.addView(glyph,new LinearLayout.LayoutParams(dp(40),dp(40)));TextView text=text(label,14,INK);text.setTypeface(null,Typeface.BOLD);text.setGravity(Gravity.CENTER);row.addView(text,new LinearLayout.LayoutParams(0,-2,1));row.setOnClickListener(v->{if(!busy) action.run();});row.setContentDescription(label);row.setFocusable(true);LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,dp(52),1);p.setMargins(dp(3),dp(3),dp(3),dp(3));parent.addView(row,p);
+        LinearLayout row=horizontal(null);row.setGravity(Gravity.CENTER_VERTICAL);row.setPadding(dp(6),dp(3),dp(10),dp(3));row.setBackground(PocketTheme.ripple(this,color,18));ReaderIconButton glyph=icon(symbol,label,null,()->{});glyph.setDecorative();row.addView(glyph,new LinearLayout.LayoutParams(dp(40),dp(40)));TextView text=text(label,14,INK);text.setTypeface(null,Typeface.BOLD);text.setGravity(Gravity.CENTER);row.addView(text,new LinearLayout.LayoutParams(0,-2,1));row.setOnClickListener(v->{if(!busy) action.run();});row.setContentDescription(label);row.setFocusable(true);LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,dp(52),1);p.setMargins(dp(3),dp(3),dp(3),dp(3));parent.addView(row,p);
     }
     private TextWatcher watcher(Runnable r) { return new TextWatcher() {
         public void beforeTextChanged(CharSequence s,int start,int count,int after) {}

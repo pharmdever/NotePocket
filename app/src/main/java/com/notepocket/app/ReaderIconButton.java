@@ -13,6 +13,10 @@ public final class ReaderIconButton extends View {
         super(context);this.icon=icon;this.caption=caption;setContentDescription(label);setTooltipText(label);setFocusable(true);setClickable(true);setOnClickListener(v->action.run());
         int size=Math.round(48*getResources().getDisplayMetrics().density);setMinimumWidth(size);setMinimumHeight(size);
     }
+    /** A parent action owns this icon's entire touch and accessibility target. */
+    public void setDecorative() {
+        setOnClickListener(null);setOnLongClickListener(null);setTooltipText(null);setClickable(false);setLongClickable(false);setFocusable(false);setContentDescription(null);setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+    }
     @Override protected void drawableStateChanged() {super.drawableStateChanged();invalidate();}
     @Override public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo info) {super.onInitializeAccessibilityNodeInfo(info);info.setClassName("android.widget.Button");info.setSelected(isSelected());}
     @Override protected void onDraw(Canvas canvas) {
