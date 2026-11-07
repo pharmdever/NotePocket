@@ -31,7 +31,11 @@ jobs:
         with:
           gradle-version: '8.9'
       - name: Compile and lint
-        run: gradle assembleDebug assembleDebugAndroidTest lintDebug
+        run: |
+          gradle assembleDebug assembleDebugAndroidTest lintDebug || {
+            cat app/build/intermediates/lint_intermediate_text_report/debug/lintReportDebug/lint-results-debug.txt
+            exit 1
+          }
       - name: Configure persistent release key
         if: env.ANDROID_SIGNING_BUNDLE != ''
         run: python3 tools/restore_signing.py

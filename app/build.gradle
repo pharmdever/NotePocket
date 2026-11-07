@@ -44,6 +44,7 @@ dependencies {
     implementation 'com.tom-roush:pdfbox-android:2.0.27.0'
     implementation 'com.google.android.gms:play-services-auth:22.0.0'
     implementation 'androidx.work:work-runtime:2.9.1'
+    implementation 'androidx.core:core:1.13.1'
     androidTestImplementation 'androidx.test:runner:1.6.2'
     androidTestImplementation 'androidx.test.ext:junit:1.2.1'
     androidTestImplementation 'androidx.test:core:1.6.1'
