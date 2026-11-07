@@ -30,7 +30,7 @@ public class StoreBackupTest {
         legacy.execSQL("INSERT INTO note_docs VALUES(42,'legacy-doc')");legacy.close();
         store=new Store(context,"store-test.db");ContentValues old=store.note(42);
         assertEquals("ข้อมูลที่ต้องรักษา",old.getAsString("body"));assertEquals("ทั่วไป",old.getAsString("folder"));
-        assertEquals(1,store.attachments(42).size());assertEquals(0,(int)old.getAsInteger("deleted"));assertEquals(7,store.getReadableDatabase().getVersion());
+        assertEquals(1,store.attachments(42).size());assertEquals(0,(int)old.getAsInteger("deleted"));assertEquals(8,store.getReadableDatabase().getVersion());
     }
     private String document() throws Exception {
         String id=UUID.randomUUID().toString();File file=new File(context.getFilesDir(),id);files.add(file);byte[] bytes="original PDF bytes".getBytes(StandardCharsets.UTF_8);

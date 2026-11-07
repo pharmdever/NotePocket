@@ -1,0 +1,29 @@
+package com.notepocket.app;
+import android.content.*;
+import android.graphics.Bitmap;
+import androidx.test.core.app.ActivityScenario;
+import androidx.test.ext.junit.runners.AndroidJUnit4;
+import androidx.test.platform.app.InstrumentationRegistry;
+import org.junit.*;
+import org.junit.runner.RunWith;
+import java.io.*;
+import static androidx.test.espresso.Espresso.onView;
+import static androidx.test.espresso.action.ViewActions.*;
+import static androidx.test.espresso.matcher.ViewMatchers.*;
+import static androidx.test.espresso.assertion.ViewAssertions.matches;
+import static org.junit.Assert.*;
+@RunWith(AndroidJUnit4.class)
+public class DriveUiTest {
+    private TestIdle idle;
+    @Before public void before() {idle=TestIdle.register();}
+    @After public void after() {idle.close();}
+    @Test public void offlineUserCanOpenSetupCopyPublicFingerprintAndReturnToNotes() throws Exception {
+        Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();
+        try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)) {
+            onView(withText("ตั้งค่า")).perform(click());onView(withText("เชื่อมบัญชีและซิงก์ Drive")).perform(scrollTo(),click());onView(withText("ใช้งานในเครื่องได้ตามเดิม")).check(matches(isDisplayed()));onView(withText("เชื่อมบัญชี Google")).check(matches(isDisplayed()));
+            Bitmap image=InstrumentationRegistry.getInstrumentation().getUiAutomation().takeScreenshot();assertNotNull(image);File folder=new File(context.getExternalFilesDir(null),"screenshots");folder.mkdirs();try(OutputStream out=new FileOutputStream(new File(folder,"18-drive-settings.png"))) {image.compress(Bitmap.CompressFormat.PNG,100,out);}finally {image.recycle();}
+            onView(withText("คัดลอก Package และ SHA-1")).perform(scrollTo(),click());InstrumentationRegistry.getInstrumentation().runOnMainSync(()->{ClipboardManager clipboard=(ClipboardManager)context.getSystemService(Context.CLIPBOARD_SERVICE);String copied=clipboard.getPrimaryClip().getItemAt(0).getText().toString();assertTrue(copied.startsWith(context.getPackageName()+"\n"));assertTrue(copied.substring(copied.indexOf('\n')+1).matches("([0-9A-F]{2}:){19}[0-9A-F]{2}"));});
+            onView(withContentDescription("กลับจาก Google Drive")).perform(click());onView(withText("โน้ต")).perform(click());onView(withText("＋ เขียนโน้ต")).check(matches(isDisplayed()));
+        }
+    }
+}

@@ -329,3 +329,10 @@ Copyright 2002, 2010 Adobe Systems Incorporated.
 Includes the Script Property (Scripts-10.0.0.txt)
 Copyright 2017 Unicode, Inc.
 
+
+
+Google Play services Authorization API: Google's applicable SDK/API terms.
+https://developers.google.com/android/guides/overview
+
+AndroidX WorkManager 2.9.1: Android Open Source Project, Apache License 2.0.
+https://developer.android.com/jetpack/androidx/releases/work

@@ -22,6 +22,13 @@ public class MainActivity extends Activity {
     private static final int GREEN=PocketTheme.FOREST,INK=PocketTheme.INK,MUTED=PocketTheme.MUTED,BG=PocketTheme.CREAM,LINE=PocketTheme.LINE;
     private static final int PICK=10,EXPORT=11,BACKUP=12,RESTORE=13,ANNOTATED=14,FONT=15,CSV=16;
     private Store store;
+    private boolean syncEditorHeld,syncPdfHeld,driveResumeRefresh,syncReceiverRegistered;
+    private final BroadcastReceiver syncReceiver=new BroadcastReceiver() {public void onReceive(Context c,Intent i) {if(!editor&&pdf==null&&!busy) {if(tab.equals("settings")) home();else refresh();}}};
+    private void holdEditorSync() {if(!syncEditorHeld) {SyncRuntime.enterEditor();syncEditorHeld=true;}}
+    private void releaseEditorSync() {if(syncEditorHeld) {SyncRuntime.leaveEditor();syncEditorHeld=false;SyncScheduler.enqueue(getApplicationContext());}}
+    private void holdPdfSync() {if(!syncPdfHeld) {SyncRuntime.enterEditor();syncPdfHeld=true;}}
+    private void releasePdfSync() {if(syncPdfHeld) {SyncRuntime.leaveEditor();syncPdfHeld=false;SyncScheduler.enqueue(getApplicationContext());}}
+
     private LibraryList library;
     private boolean libraryReleased;
     private EditorSaver noteSaver;
@@ -133,7 +140,7 @@ public class MainActivity extends Activity {
         handler.removeCallbacks(autosave);if(library!=null) {library.close();library=null;}closePdf();editor=false;releaseEditorViews();pdfReturnNote=-1;screen();
         LinearLayout heading=horizontal(root);ReaderIconButton brand=icon("read","NotePocket",null,()->{});brand.setSelected(true);brand.setDecorative();heading.addView(brand,new LinearLayout.LayoutParams(dp(48),dp(48)));
         TextView wordmark=strong("NotePocket",26);wordmark.setPadding(dp(10),0,0,0);heading.addView(wordmark,new LinearLayout.LayoutParams(0,-2,1));
-        heading.addView(pill("ออฟไลน์",PocketTheme.SAGE,GREEN));
+        heading.addView(pill(store.query("SELECT v FROM sync_config WHERE k='connected' AND v='1'").isEmpty()?"ออฟไลน์":"เชื่อม Drive",PocketTheme.SAGE,GREEN));
         if(!tab.equals("notes")) root.addView(text(tab.equals("files")?"เอกสารพร้อมอ่าน ใกล้โน้ตของคุณ":"พื้นที่ของคุณ ในแบบที่คุณเลือก",14,MUTED));gap(root,12);
         if(tab.equals("settings")) settings();
         else {
@@ -197,9 +204,9 @@ public class MainActivity extends Activity {
             else confirm("ย้ายเข้าถังขยะ?","สามารถกู้คืนได้จากตัวกรองถังขยะ",() -> {store.flag(id,"deleted",1);refresh();});
         }).show();
     }
-    private void releaseEditorViews() {if(noteSaver!=null) {noteSaver.close();noteSaver=null;}handler.removeCallbacks(cursorFollower);title=body=null;noteHeader=noteToolbar=noteTables=noteToolsRow=null;noteScroll=null;noteToolStatus=null;noteUndo=noteRedo=recentTool=null;noteToolIcons.clear();noteHistory.clear();tables=new ArrayList<>();soapDraft=new SoapDraft();}
+    private void releaseEditorViews() {releaseEditorSync();if(noteSaver!=null) {noteSaver.close();noteSaver=null;}handler.removeCallbacks(cursorFollower);title=body=null;noteHeader=noteToolbar=noteTables=noteToolsRow=null;noteScroll=null;noteToolStatus=null;noteUndo=noteRedo=recentTool=null;noteToolIcons.clear();noteHistory.clear();tables=new ArrayList<>();soapDraft=new SoapDraft();}
     private void edit(long id) {
-        if(editor&&!saveNote(false)) return;if(library!=null) {library.close();library=null;}if(noteSaver!=null) noteSaver.close();noteRevision=0;final long epoch=++editorEpoch;expandedTableId="";tablePages.clear();
+        if(editor&&!saveNote(false)) return;holdEditorSync();if(library!=null) {library.close();library=null;}if(noteSaver!=null) noteSaver.close();noteRevision=0;final long epoch=++editorEpoch;expandedTableId="";tablePages.clear();
         noteSaver=new EditorSaver(store,id,(revision,saved,failure)->{if(isDestroyed()||epoch!=editorEpoch||!editor) return;if(failure==null) {noteId=saved;if(revision==noteRevision) {dirty=false;savedLabel.setText("บันทึกแล้ว  ·  "+folder);}}else {savedLabel.setText("บันทึกไม่สำเร็จ — ตรวจสอบพื้นที่ว่าง");}});
         closePdf();pdfReturnNote=-1;editor=false;loading=true;noteId=id;dirty=false;
         ContentValues note=id<0?null:store.note(id);
@@ -475,7 +482,7 @@ public class MainActivity extends Activity {
         if(!saveNote(false)) return;long back=editor?noteId:-1;keyboardOff();openPdf(id,name,store.lastPage(id),back);
     }
     private void openPdf(String id,String name,int page,long backNote) {
-        handler.removeCallbacks(autosave);editor=false;releaseEditorViews();if(library!=null) {library.close();library=null;}closePdf();pdfReturnNote=backNote;
+        handler.removeCallbacks(autosave);editor=false;releaseEditorViews();if(library!=null) {library.close();library=null;}closePdf();pdfReturnNote=backNote;holdPdfSync();
         try {
             pdfFd=ParcelFileDescriptor.open(new File(getFilesDir(),id),ParcelFileDescriptor.MODE_READ_ONLY);pdf=new PdfRenderer(pdfFd);pdfPages=pdf.getPageCount();if(pdfPages<1) throw new IOException();
             pdfId=id;pdfName=name;root=vertical();root.setBackgroundColor(BG);setContentView(root);
@@ -609,7 +616,7 @@ public class MainActivity extends Activity {
     }
     private void returnFromPdf() {long back=pdfReturnNote;closePdf();pdfReturnNote=-1;if(back>=0) edit(back);else home();}
     private void closePdf() {
-        pdfGeneration++;pdfRendering=false;pdfImageReleased=false;
+        releasePdfSync();pdfGeneration++;pdfRendering=false;pdfImageReleased=false;
         if(selectionAction!=null) selectionAction.finish();if(paletteWindow!=null) {paletteWindow.dismiss();paletteWindow=null;}
         setFullscreen(false);readerHeader=readerFooter=null;toolDock=historyStrip=null;toolStatus=null;modeIcons=null;undoIcon=redoIcon=previousIcon=nextIcon=moreIcon=collapsedTools=null;pdfStage=null;getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         if(pageView!=null) {pageView.commitGesture();pageView.setPage(null);pageView=null;}
@@ -672,6 +679,7 @@ public class MainActivity extends Activity {
     private void settings() {
         LinearLayout page=scroll(root,1);LinearLayout about=card(page);
         about.addView(strong("ข้อมูลของคุณอยู่กับคุณ",21));about.addView(text("โน้ตและไฟล์อยู่ในเครื่อง ไม่ต้องสมัครบัญชี และใช้งานได้โดยไม่ต่ออินเทอร์เน็ต",15,MUTED));
+        LinearLayout drive=card(page);drive.addView(strong("Google Drive · เลือกเชื่อมได้",20));drive.addView(text("ใช้งานออฟไลน์ได้ตามเดิม เชื่อม Google เพื่อซิงก์โน้ตและเอกสารกับอุปกรณ์อื่นในบัญชีเดียวกัน",14,MUTED));drive.addView(button("เชื่อมบัญชีและซิงก์ Drive",()->{driveResumeRefresh=true;startActivity(new Intent(this,DriveSyncActivity.class));},true));
         LinearLayout reader=card(page);reader.addView(strong("การอ่านและเครื่องมือ",20));reader.addView(button("จัดลำดับเครื่องมือโน้ต",this::arrangeNoteTools,false));gap(reader,8);reader.addView(button("ตั้งค่าตัวอ่าน PDF",this::readerSettings,false));gap(reader,8);reader.addView(button("จัดการฟอนต์ TTF / OTF",this::manageFonts,false));gap(reader,8);reader.addView(button("เลือกฟอนต์เริ่มต้น",this::chooseDefaultFont,false));gap(reader,8);reader.addView(button("คืนค่าการตั้งค่าเริ่มต้น",()->confirm("คืนค่าการตั้งค่า?","โน้ต เอกสาร รอยเขียน และฟอนต์ที่นำเข้ายังคงอยู่",()->{readerPrefs().edit().clear().apply();applyReaderSettings();toast("คืนค่าการตั้งค่าแล้ว");}),false));
         LinearLayout backup=card(page);backup.addView(strong("สำรองและกู้คืน",20));
         backup.addView(text("เก็บโน้ต ไฟล์แนบ บุ๊กมาร์ก และบันทึก PDF เป็นไฟล์เดียว ควรสำรองก่อนเปลี่ยนเครื่องหรือถอนแอป",14,MUTED));gap(backup,8);
@@ -758,12 +766,12 @@ public class MainActivity extends Activity {
         },"NotePocket-IO").start();
     }
     public boolean isWorkIdle() {return (library==null||editor||pdf!=null||!library.isLoading())&&(noteSaver==null||!noteSaver.isRunning())&&!pdfRendering;}
-    @Override protected void onResume() {super.onResume();if(libraryReleased&&library!=null&&!editor&&pdf==null) {libraryReleased=false;library.reload();}if(pdfImageReleased&&pdf!=null) renderPage(pageIndex);}
+    @Override protected void onResume() {super.onResume();if(!syncReceiverRegistered) {IntentFilter filter=new IntentFilter(SyncScheduler.DONE);if(Build.VERSION.SDK_INT>=33) registerReceiver(syncReceiver,filter,Context.RECEIVER_NOT_EXPORTED);else registerReceiver(syncReceiver,filter);syncReceiverRegistered=true;}SyncScheduler.enqueue(getApplicationContext());if(driveResumeRefresh&&!editor&&pdf==null) {driveResumeRefresh=false;home();}if(libraryReleased&&library!=null&&!editor&&pdf==null) {libraryReleased=false;library.reload();}if(pdfImageReleased&&pdf!=null) renderPage(pageIndex);}
     @Override public void onTrimMemory(int level) {
         super.onTrimMemory(level);Fonts.trimMemory();noteHistory.clear();if(editor) updateNoteTools();if(pageView!=null) pageView.trimCaches();
         if(level>=TRIM_MEMORY_UI_HIDDEN) {if(library!=null&&!editor&&pdf==null) {library.releaseRows();libraryReleased=true;}if(pdf!=null&&pageView!=null) {pageView.commitGesture();pdfGeneration++;pdfRendering=false;pageView.releaseImage();if(pageBitmap!=null) {pageBitmap.recycle();pageBitmap=null;}pdfImageReleased=true;}}
     }
-    @Override protected void onPause() {if(pageView!=null) pageView.commitGesture();saveNote(false);super.onPause();}
+    @Override protected void onPause() {if(syncReceiverRegistered) {unregisterReceiver(syncReceiver);syncReceiverRegistered=false;}if(pageView!=null) pageView.commitGesture();saveNote(false);super.onPause();}
     @Override protected void onSaveInstanceState(Bundle state) {
         saveNote(false);state.putString("tab",tab);state.putString("filter",filter);state.putString("query",query);state.putBoolean("editor",editor);state.putLong("noteId",noteId);
         state.putBoolean("soapOpen",activeSoapDialog!=null&&activeSoapDialog.isShowing());
@@ -777,5 +785,5 @@ public class MainActivity extends Activity {
         if(paletteWindow!=null&&paletteWindow.isShowing()) paletteWindow.dismiss();else if(pdf!=null&&fullscreen) setFullscreen(false);else if(pdf!=null) returnFromPdf();else if(editor) {if(saveNote(false)) {keyboardOff();home();}}
         else if(!tab.equals("notes")||!filter.equals("all")) {tab="notes";filter="all";query="";home();}else super.onBackPressed();
     }
-    @Override protected void onDestroy() {if(activeSoapDialog!=null) activeSoapDialog.dismiss();if(activeTextDialog!=null) activeTextDialog.dismiss();handler.removeCallbacks(autosave);closePdf();if(progress!=null) {progress.dismiss();progress=null;}if(library!=null) library.close();if(noteSaver!=null) noteSaver.close();handler.removeCallbacks(cursorFollower);pdfWorker.shutdown();if(!busy) store.close();super.onDestroy();}
+    @Override protected void onDestroy() {if(activeSoapDialog!=null) activeSoapDialog.dismiss();if(activeTextDialog!=null) activeTextDialog.dismiss();handler.removeCallbacks(autosave);closePdf();if(progress!=null) {progress.dismiss();progress=null;}if(library!=null) library.close();if(noteSaver!=null) noteSaver.close();handler.removeCallbacks(cursorFollower);pdfWorker.shutdown();releaseEditorSync();releasePdfSync();if(!busy) store.close();super.onDestroy();}
 }

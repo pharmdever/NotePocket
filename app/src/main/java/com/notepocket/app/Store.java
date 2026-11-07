@@ -8,7 +8,7 @@ import java.util.*;
 /** Additive, transactional schema migration; never drops user data. */
 public final class Store extends SQLiteOpenHelper {
     public Store(Context context) { this(context, "notepocket.db"); }
-    Store(Context context, String name) { super(context,name,null,7);setWriteAheadLoggingEnabled(true); }
+    Store(Context context, String name) { super(context,name,null,8);setWriteAheadLoggingEnabled(true); }
     @Override public void onCreate(SQLiteDatabase db) { migrate(db); }
     @Override public void onUpgrade(SQLiteDatabase db,int oldVersion,int newVersion) { migrate(db); }
     private void migrate(SQLiteDatabase db) {
@@ -28,6 +28,16 @@ public final class Store extends SQLiteOpenHelper {
         db.execSQL("CREATE TABLE IF NOT EXISTS fonts (id TEXT PRIMARY KEY, name TEXT NOT NULL, size INTEGER NOT NULL)");
         db.execSQL("CREATE TABLE IF NOT EXISTS folders(name TEXT PRIMARY KEY NOT NULL)");
         db.execSQL("INSERT OR IGNORE INTO folders(name) VALUES('ทั่วไป')");db.execSQL("INSERT OR IGNORE INTO folders(name) SELECT DISTINCT folder FROM notes");
+        addColumn(db,"notes","sync_id","TEXT NOT NULL DEFAULT ''");
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS notes_sync_id ON notes(sync_id) WHERE sync_id!=''");
+        db.execSQL("CREATE TABLE IF NOT EXISTS sync_config(k TEXT PRIMARY KEY,v TEXT NOT NULL)");
+        db.execSQL("CREATE TABLE IF NOT EXISTS sync_ops(rev TEXT PRIMARY KEY,entity TEXT NOT NULL,kind TEXT NOT NULL,json TEXT NOT NULL,label TEXT NOT NULL,time INTEGER NOT NULL,deleted INTEGER NOT NULL,uploaded INTEGER NOT NULL DEFAULT 0)");
+        db.execSQL("CREATE INDEX IF NOT EXISTS sync_entity ON sync_ops(entity)");
+        db.execSQL("CREATE TABLE IF NOT EXISTS sync_parents(rev TEXT NOT NULL,parent TEXT NOT NULL,PRIMARY KEY(rev,parent))");
+        db.execSQL("CREATE INDEX IF NOT EXISTS sync_parent ON sync_parents(parent)");
+        db.execSQL("CREATE TABLE IF NOT EXISTS sync_bindings(entity TEXT PRIMARY KEY,kind TEXT NOT NULL,local_key TEXT NOT NULL,fingerprint TEXT NOT NULL,head TEXT NOT NULL)");
+        db.execSQL("CREATE TABLE IF NOT EXISTS sync_seen(file_id TEXT PRIMARY KEY)");
+        db.execSQL("CREATE TABLE IF NOT EXISTS sync_blob_local(id TEXT PRIMARY KEY,sha TEXT NOT NULL,size INTEGER NOT NULL,modified INTEGER NOT NULL)");
         db.execSQL("DROP INDEX IF EXISTS notes_order");
         db.execSQL("CREATE INDEX IF NOT EXISTS notes_page ON notes(deleted,pinned DESC,updated DESC,id DESC)");
         db.execSQL("CREATE INDEX IF NOT EXISTS notes_folder_page ON notes(folder,deleted,pinned DESC,updated DESC,id DESC)");

@@ -6,8 +6,8 @@ android {
         applicationId 'com.notepocket.notes'
         minSdk 26
         targetSdk 35
-        versionCode = (project.findProperty('notePocketVersionCode') ?: '10').toInteger()
-        versionName '0.9.1'
+        versionCode = (project.findProperty('notePocketVersionCode') ?: '11').toInteger()
+        versionName '0.10.0'
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
         manifestPlaceholders = [appLabel: 'NotePocket']
     }
@@ -42,6 +42,8 @@ if (gradle.startParameter.taskNames.any { it.toLowerCase().contains('release') }
 }
 dependencies {
     implementation 'com.tom-roush:pdfbox-android:2.0.27.0'
+    implementation 'com.google.android.gms:play-services-auth:22.0.0'
+    implementation 'androidx.work:work-runtime:2.9.1'
     androidTestImplementation 'androidx.test:runner:1.6.2'
     androidTestImplementation 'androidx.test.ext:junit:1.2.1'
     androidTestImplementation 'androidx.test:core:1.6.1'

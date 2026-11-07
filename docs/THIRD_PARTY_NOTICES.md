@@ -9,3 +9,9 @@ Apache License 2.0: https://www.apache.org/licenses/LICENSE-2.0
 
 Original license/notice resources from runtime dependencies are retained in the APK.
 The dependency's META-INF/DEPENDENCIES metadata is excluded to avoid resource collisions.
+
+Google Play services Authorization API is provided under Google's applicable SDK/API terms.
+https://developers.google.com/android/guides/overview
+
+AndroidX WorkManager 2.9.1 is provided by the Android Open Source Project under Apache License 2.0.
+https://developer.android.com/jetpack/androidx/releases/work

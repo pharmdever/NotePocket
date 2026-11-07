@@ -127,5 +127,5 @@ public final class Backup {
         while((n=in.read(buffer))!=-1) { total+=n;if(total>limit) throw new IOException("File too large");out.write(buffer,0,n); }
         return total;
     }
-    private static void deleteTree(File file) { File[] children=file.listFiles();if(children!=null) for(File child:children) deleteTree(child);file.delete(); }
+    static void deleteTree(File file) { File[] children=file.listFiles();if(children!=null) for(File child:children) deleteTree(child);file.delete(); }
 }
