@@ -4,7 +4,7 @@ import java.util.*;
 
 /** A revision names all previous heads it replaces. Versions never depend on device clocks. */
 final class SyncOp {
-    static final int MAX_RECORD=4*1024*1024;
+    static final int MAX_RECORD=1536*1024;
     final String rev,entity,kind;final List<String> parents;final JSONObject value;final long time;
     SyncOp(String rev,String entity,String kind,List<String> parents,JSONObject value,long time) throws JSONException {
         this.rev=SyncJson.id(rev);this.entity=SyncJson.id(entity);if(!Arrays.asList("note","folder","doc","font","page","reading").contains(kind)) throw new JSONException("Unknown record kind");this.kind=kind;

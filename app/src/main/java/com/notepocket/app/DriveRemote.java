@@ -10,8 +10,10 @@ import java.util.*;
 final class DriveRemote implements SyncRemote {
     static final String SCOPE="https://www.googleapis.com/auth/drive.appdata";
     private static final String API="https://www.googleapis.com/drive/v3/",UPLOAD="https://www.googleapis.com/upload/drive/v3/";
-    private final String token;private final SyncCancel cancel;
-    DriveRemote(String token,SyncCancel cancel) {if(token==null||token.isEmpty()) throw new IllegalArgumentException("Missing token");this.token=token;this.cancel=cancel;}
+    interface Connections {HttpURLConnection open(URL url) throws IOException;}
+    private final String token;private final SyncCancel cancel;private final Connections connections;
+    DriveRemote(String token,SyncCancel cancel) {this(token,cancel,url->(HttpURLConnection)url.openConnection());}
+    DriveRemote(String token,SyncCancel cancel,Connections connections) {if(token==null||token.isEmpty()) throw new IllegalArgumentException("Missing token");this.token=token;this.cancel=cancel;this.connections=connections;}
     static final class Failure extends IOException {final int code;Failure(int code) {super(code==401?"สิทธิ์ Google หมดอายุ กรุณาเชื่อมบัญชีอีกครั้ง":code==403?"Drive ยังไม่อนุญาต ตรวจ OAuth, พื้นที่ และโควตาบัญชี":code==429?"Drive จำกัดการใช้งานชั่วคราว กรุณาลองใหม่":code==404?"Drive ยังแสดงข้อมูลไม่ครบ กรุณาลองใหม่":"เชื่อม Drive ไม่สำเร็จ ("+code+")");this.code=code;}}
     @Override public JSONObject account() throws Exception {return json("GET",API+"about?fields="+enc("user(permissionId,emailAddress,displayName)"),null);}
     @Override public List<Item> list() throws Exception {
@@ -35,7 +37,7 @@ final class DriveRemote implements SyncRemote {
     private JSONObject metadata(String name,String type,String sha) throws JSONException {return new JSONObject().put("name",name).put("parents",new JSONArray().put("appDataFolder")).put("appProperties",new JSONObject().put("npType",type).put("sha",sha));}
     private JSONObject json(String method,String url,byte[] body) throws Exception {HttpURLConnection c=open(url,method);try {if(body!=null) {c.setRequestProperty("Content-Type","application/json");send(c,body);}require(c);return readJson(c);}finally {c.disconnect();}}
     private JSONObject readJson(HttpURLConnection c) throws Exception {try(InputStream in=c.getInputStream();ByteArrayOutputStream out=new ByteArrayOutputStream()) {byte[] buffer=new byte[16384];int n;while((n=in.read(buffer))!=-1) {cancel.check();if(out.size()+n>8*1024*1024) throw new IOException("Drive response too large");out.write(buffer,0,n);}return new JSONObject(out.toString("UTF-8"));}}
-    private HttpURLConnection open(String url,String method) throws Exception {cancel.check();trusted(url);HttpURLConnection c=(HttpURLConnection)new URL(url).openConnection();c.setInstanceFollowRedirects(false);c.setConnectTimeout(20000);c.setReadTimeout(30000);c.setRequestMethod(method);c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("Accept","application/json");cancel.connection(c);return c;}
+    private HttpURLConnection open(String url,String method) throws Exception {cancel.check();trusted(url);HttpURLConnection c=connections.open(new URL(url));c.setInstanceFollowRedirects(false);c.setConnectTimeout(20000);c.setReadTimeout(30000);c.setRequestMethod(method);c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("Accept","application/json");cancel.connection(c);return c;}
     static void trusted(String value) throws IOException {try {URL url=new URL(value);if(!url.getProtocol().equals("https")||!url.getHost().equals("www.googleapis.com")||url.getPort()!=-1&&url.getPort()!=443||url.getUserInfo()!=null||!(url.getPath().startsWith("/drive/v3/")||url.getPath().startsWith("/upload/drive/v3/"))) throw new IOException("Untrusted Drive URL");}catch(MalformedURLException e) {throw new IOException("Invalid Drive URL");}}
     private void send(HttpURLConnection c,byte[] bytes) throws Exception {c.setDoOutput(true);c.setFixedLengthStreamingMode(bytes.length);try(OutputStream out=c.getOutputStream()) {cancel.check();out.write(bytes);}}
     private void require(HttpURLConnection c) throws Exception {cancel.check();int code=c.getResponseCode();if(code<200||code>=300) throw new Failure(code);}
