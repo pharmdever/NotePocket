@@ -1,0 +1,26 @@
+name: Inspect Android QA crash
+on:
+  push:
+    paths: ['.github/workflows/inspect-qa.yml']
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Read crash context from public QA artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          curl --fail --location --silent --show-error -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" https://api.github.com/repos/pharmdever/NotePocket/actions/artifacts/13581531820/zip -o /tmp/qa.zip
+          python3 - <<'PY'
+          import zipfile
+          with zipfile.ZipFile('/tmp/qa.zip') as z:
+              name=next(n for n in z.namelist() if n.endswith('logcat.txt'))
+              lines=z.read(name).decode(errors='replace').splitlines()
+              for i,line in enumerate(lines):
+                  if 'FATAL EXCEPTION' in line:
+                      print('\n'.join(lines[max(0,i-3):i+45]))
+          PY
