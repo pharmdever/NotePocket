@@ -336,3 +336,11 @@ https://developers.google.com/android/guides/overview
 
 AndroidX WorkManager 2.9.1: Android Open Source Project, Apache License 2.0.
 https://developer.android.com/jetpack/androidx/releases/work
+
+
+Mermaid 10.9.3 — MIT License, copyright Mermaid contributors.
+https://github.com/mermaid-js/mermaid/tree/v10.9.3
+Pinned npm archive SHA-512: V80X1isSEvAewIL3xhmz/rVmc27CVljcsbWxkxlWJWY/1kQa4XOABqpDl2qQLGKzpKm6WbTfUEKImBlUfFYArw==
+The full Mermaid license is packaged in diagram/MERMAID-LICENSE.txt.
+The upstream renderer is retained verbatim, including its bundled legal notices.
+DOMPurify is distributed under the Apache-2.0 or MPL-2.0 license.

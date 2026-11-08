@@ -6,8 +6,8 @@ android {
         applicationId 'com.notepocket.notes'
         minSdk 26
         targetSdk 35
-        versionCode = (project.findProperty('notePocketVersionCode') ?: '11').toInteger()
-        versionName '0.10.0'
+        versionCode = (project.findProperty('notePocketVersionCode') ?: '12').toInteger()
+        versionName '0.11.0'
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
         manifestPlaceholders = [appLabel: 'NotePocket']
     }
@@ -50,3 +50,13 @@ dependencies {
     androidTestImplementation 'androidx.test:core:1.6.1'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.6.1'
 }
+
+// Vendor the integrity-pinned renderer into generated assets; the installed app needs no CDN.
+def diagramAssets = layout.buildDirectory.dir('generated/diagramAssets')
+android.sourceSets.main.assets.srcDir(diagramAssets)
+tasks.register('prepareDiagramRenderer', Exec) {
+    inputs.file(rootProject.file('tools/prepare_diagrams.py'))
+    outputs.dir(diagramAssets)
+    commandLine 'python3', rootProject.file('tools/prepare_diagrams.py'), diagramAssets.get().dir('diagram').asFile
+}
+tasks.named('preBuild').configure { dependsOn 'prepareDiagramRenderer' }
