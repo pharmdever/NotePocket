@@ -16,7 +16,8 @@ final class InlineDiagramRenderer implements AutoCloseable {
     private final Context context;private final LinearLayout host;private final Listener listener;private final Handler handler=new Handler(Looper.getMainLooper());
     private final LinkedHashMap<String,String> queue=new LinkedHashMap<>();private final Set<String> failed=new HashSet<>();
     private WebView web;private boolean loaded,exportStarted;private volatile boolean closed;private volatile String active;private final Bridge bridge=new Bridge();
-    private final Runnable timeout=()->{handler.removeCallbacksAndMessages(null);if(active!=null){String key=active;active=null;failed.add(key);bridge.abort();destroyWeb();listener.complete(key,false);next();}else if(!queue.isEmpty()){List<String> keys=new ArrayList<>(queue.keySet());queue.clear();destroyWeb();for(String key:keys){failed.add(key);listener.complete(key,false);}}};
+    private final Runnable timeout=this::timedOut;
+    private void timedOut(){handler.removeCallbacksAndMessages(null);if(active!=null){String key=active;active=null;failed.add(key);bridge.abort();destroyWeb();listener.complete(key,false);next();}else if(!queue.isEmpty()){List<String> keys=new ArrayList<>(queue.keySet());queue.clear();destroyWeb();for(String key:keys){failed.add(key);listener.complete(key,false);}}}
     InlineDiagramRenderer(Context context,LinearLayout host,Listener listener){this.context=context;this.host=host;this.listener=listener;}
     void clearFailures(){failed.clear();}
     boolean isIdle(){return active==null&&queue.isEmpty();}
