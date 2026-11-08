@@ -23,7 +23,7 @@ window.exportDiagram=async function(){
   svg.setAttribute('width',w);svg.setAttribute('height',h);svg.setAttribute('xmlns','http://www.w3.org/2000/svg');svg.style.width=w+'px';svg.style.height=h+'px';
   const blob=new Blob([new XMLSerializer().serializeToString(svg)],{type:'image/svg+xml;charset=utf-8'});const url=URL.createObjectURL(blob);
   try{
-   const image=new Image();await new Promise((resolve,reject)=>{image.onload=resolve;image.onerror=reject;image.src=url;});
+   const image=new Image();await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('SVG image decode timed out')),8000);image.onload=()=>{clearTimeout(timer);resolve();};image.onerror=()=>{clearTimeout(timer);reject(Error('SVG image decode failed'));};image.src=url;});
    const canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;const ctx=canvas.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,w,h);ctx.drawImage(image,0,0,w,h);
    const data=canvas.toDataURL('image/png').split(',')[1];if(data.length>16000000)throw Error('Export too large');
    NotePocketDiagram.beginPng();let index=0;for(let at=0;at<data.length;at+=48000)NotePocketDiagram.pngChunk(index++,data.slice(at,at+48000));NotePocketDiagram.endPng();report('ready');
