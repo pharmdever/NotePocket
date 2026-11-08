@@ -8,11 +8,11 @@ import org.junit.runner.RunWith;
 import java.io.*;
 import static org.junit.Assert.*;
 
-/** This instrumentation is run against the signed 0.10.0 APK before installing 0.11.0. */
+/** This instrumentation is run against the signed 0.11.0 APK before installing 0.12.0. */
 @RunWith(AndroidJUnit4.class)
 public class LegacyUpgradeSeedTest {
     @Test public void seedOriginalReleaseSchema() throws Exception {
-        Context c=InstrumentationRegistry.getInstrumentation().getTargetContext();assertEquals(11,c.getPackageManager().getPackageInfo(c.getPackageName(),0).versionCode);
+        Context c=InstrumentationRegistry.getInstrumentation().getTargetContext();assertEquals(12,c.getPackageManager().getPackageInfo(c.getPackageName(),0).versionCode);
         c.deleteDatabase("notepocket.db");SQLiteDatabase db=c.openOrCreateDatabase("notepocket.db",0,null);
         try {
             db.execSQL("CREATE TABLE notes(id INTEGER PRIMARY KEY,title TEXT NOT NULL,body TEXT NOT NULL,updated INTEGER NOT NULL,rich TEXT NOT NULL DEFAULT '',folder TEXT NOT NULL DEFAULT 'ทั่วไป',pinned INTEGER NOT NULL DEFAULT 0,deleted INTEGER NOT NULL DEFAULT 0)");
@@ -33,7 +33,7 @@ public class LegacyUpgradeSeedTest {
         db.execSQL("CREATE TABLE IF NOT EXISTS sync_bindings(entity TEXT PRIMARY KEY,kind TEXT NOT NULL,local_key TEXT NOT NULL,fingerprint TEXT NOT NULL,head TEXT NOT NULL)");
         db.execSQL("CREATE TABLE IF NOT EXISTS sync_seen(file_id TEXT PRIMARY KEY)");
         db.execSQL("CREATE TABLE IF NOT EXISTS sync_blob_local(id TEXT PRIMARY KEY,sha TEXT NOT NULL,size INTEGER NOT NULL,modified INTEGER NOT NULL)");
-db.execSQL("UPDATE notes SET sync_id='upgrade-note-sync-77' WHERE id=77");db.execSQL("INSERT INTO sync_config(k,v) VALUES('upgrade-marker','keep')");db.setVersion(8);
+db.execSQL("UPDATE notes SET sync_id='upgrade-note-sync-77' WHERE id=77");db.execSQL("INSERT INTO sync_config(k,v) VALUES('upgrade-marker','keep')");ContentValues diagram=new ContentValues();diagram.put("id",78);diagram.put("title","Previous Mermaid source");diagram.put("body","before\n```mermaid\nflowchart TD\nA-->B\n```\nafter");diagram.put("updated",124);diagram.put("sync_id","upgrade-diagram-78");db.insertOrThrow("notes",null,diagram);db.setVersion(8);
         } finally {db.close();}
         try(OutputStream out=new FileOutputStream(new File(c.getFilesDir(),"release-upgrade-doc"))) {out.write(new byte[]{1,2,3,4,5,6});}
         String font="font-upgrade-preserved";File fontFile=new File(c.getFilesDir(),font);

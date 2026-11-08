@@ -206,9 +206,9 @@ public class MainActivity extends Activity {
             else confirm("ย้ายเข้าถังขยะ?","สามารถกู้คืนได้จากตัวกรองถังขยะ",() -> {store.flag(id,"deleted",1);refresh();});
         }).show();
     }
-    private void releaseEditorViews() {releaseEditorSync();if(noteSaver!=null) {noteSaver.close();noteSaver=null;}handler.removeCallbacks(cursorFollower);title=body=null;noteHeader=noteToolbar=noteTables=noteToolsRow=noteDiagrams=null;handler.removeCallbacks(diagramRefresh);noteScroll=null;noteToolStatus=null;noteUndo=noteRedo=recentTool=null;noteToolIcons.clear();noteHistory.clear();tables=new ArrayList<>();soapDraft=new SoapDraft();}
+    private void releaseEditorViews() {if(body instanceof InlineNoteEditText)((InlineNoteEditText)body).close();releaseEditorSync();if(noteSaver!=null) {noteSaver.close();noteSaver=null;}handler.removeCallbacks(cursorFollower);title=body=null;noteHeader=noteToolbar=noteTables=noteToolsRow=noteDiagrams=null;handler.removeCallbacks(diagramRefresh);noteScroll=null;noteToolStatus=null;noteUndo=noteRedo=recentTool=null;noteToolIcons.clear();noteHistory.clear();tables=new ArrayList<>();soapDraft=new SoapDraft();}
     private void edit(long id) {
-        if(editor&&!saveNote(false)) return;holdEditorSync();if(library!=null) {library.close();library=null;}if(noteSaver!=null) noteSaver.close();noteRevision=0;final long epoch=++editorEpoch;expandedTableId="";tablePages.clear();
+        if(editor&&!saveNote(false)) return;if(body instanceof InlineNoteEditText)((InlineNoteEditText)body).close();holdEditorSync();if(library!=null) {library.close();library=null;}if(noteSaver!=null) noteSaver.close();noteRevision=0;final long epoch=++editorEpoch;expandedTableId="";tablePages.clear();
         noteSaver=new EditorSaver(store,id,(revision,saved,failure)->{if(isDestroyed()||epoch!=editorEpoch||!editor) return;if(failure==null) {noteId=saved;if(revision==noteRevision) {dirty=false;savedLabel.setText("บันทึกแล้ว  ·  "+folder);}}else {savedLabel.setText("บันทึกไม่สำเร็จ — ตรวจสอบพื้นที่ว่าง");}});
         closePdf();pdfReturnNote=-1;editor=false;loading=true;noteId=id;dirty=false;
         ContentValues note=id<0?null:store.note(id);
@@ -223,13 +223,13 @@ public class MainActivity extends Activity {
         savedLabel=text("บันทึกอัตโนมัติ  ·  "+folder,12,MUTED);root.addView(savedLabel);
         noteScroll=new ScrollView(this);noteScroll.setFillViewport(true);LinearLayout page=vertical();noteScroll.addView(page);root.addView(noteScroll,new LinearLayout.LayoutParams(-1,0,1));
         title=input("ชื่อโน้ต",true);title.setTextSize(25);title.setTypeface(null,Typeface.BOLD);page.addView(title);gap(page,10);
-        body=input("เขียนสิ่งที่อยากจดจำ…",false);body.setSingleLine(false);body.setImeOptions(android.view.inputmethod.EditorInfo.IME_FLAG_NO_EXTRACT_UI);body.setGravity(Gravity.TOP);body.setMinHeight(dp(280));body.setTextSize(18);body.setTypeface(Fonts.typeface(this,readerPrefs().getString("font","sans")));
+        body=new InlineNoteEditText(this);body.setHint("เขียนสิ่งที่อยากจดจำ…");body.setHintTextColor(MUTED);body.setTextColor(INK);body.setPadding(dp(14),dp(12),dp(14),dp(12));body.setBackground(PocketTheme.field(this));body.setSingleLine(false);body.setImeOptions(android.view.inputmethod.EditorInfo.IME_FLAG_NO_EXTRACT_UI);body.setGravity(Gravity.TOP);body.setMinHeight(dp(280));body.setTextSize(18);body.setTypeface(Fonts.typeface(this,readerPrefs().getString("font","sans")));
         body.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE|android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
         page.addView(body,new LinearLayout.LayoutParams(-1,-2));gap(page,12);
         noteDiagrams=vertical();page.addView(noteDiagrams);noteTables=vertical();page.addView(noteTables);renderNoteTables();
         page.addView(strong("ไฟล์แนบ",16));attachments=vertical();page.addView(attachments);
         if(note!=null) {title.setText(note.getAsString("title"));body.setText(NoteFormat.decode(note.getAsString("rich"),note.getAsString("body")));}
-        createNoteToolbar();editor=true;loading=false;refreshAttachments();updateRecentTool();refreshDiagramCard();
+        createNoteToolbar();editor=true;loading=false;((InlineNoteEditText)body).attach(root,this::inlineDiagramMenu);refreshAttachments();updateRecentTool();refreshDiagramCard();
         TextWatcher change=new TextWatcher() {
             private int at,before,count;
             public void beforeTextChanged(CharSequence value,int start,int count,int after) {rememberNote(true);}
@@ -281,11 +281,16 @@ public class MainActivity extends Activity {
     private void restoreNoteHistory(boolean redo) {
         NoteHistory.State state=redo?noteHistory.redo(noteState()):noteHistory.undo(noteState());if(state==null) return;
         loading=true;title.setText(state.title);body.setText(state.body);tables=NoteTable.copy(state.tables);soapDraft=new SoapDraft(state.soap);renderNoteTables();
-        body.setSelection(Math.max(0,Math.min(state.start,body.length())),Math.max(0,Math.min(state.end,body.length())));loading=false;changed();updateNoteTools();body.requestFocus();followNoteCursor();
+        body.setSelection(Math.max(0,Math.min(state.start,body.length())),Math.max(0,Math.min(state.end,body.length())));loading=false;changed();refreshDiagramCard();updateNoteTools();body.requestFocus();followNoteCursor();
     }
     private void refreshDiagramCard() {
-        if(!editor||body==null||noteDiagrams==null)return;noteDiagrams.removeAllViews();List<DiagramSource.Block> found=DiagramSource.find(body.getText().toString());if(found.isEmpty())return;
+        if(!editor||body==null||noteDiagrams==null)return;if(body instanceof InlineNoteEditText)((InlineNoteEditText)body).refreshDiagrams();noteDiagrams.removeAllViews();List<DiagramSource.Block> found=DiagramSource.find(body.getText().toString());if(found.isEmpty())return;
         LinearLayout c=card(noteDiagrams);c.addView(strong("แผนภาพ Mermaid · "+found.size(),16));c.addView(text("โค้ดในโน้ตเปิดเป็นแผนภาพได้ · ใช้งานออฟไลน์",13,MUTED));Button open=button("ดูแผนภาพ",this::openDiagram,true);open.setContentDescription("ดูแผนภาพ Mermaid ในโน้ต");c.addView(open);
+    }
+    private void insertDiagram() {if(!editor||!saveNote(false))return;keyboardOff();launchDiagram(null);}
+    private void inlineDiagramMenu(int start,int end) {
+        if(!editor||body==null)return;keyboardOff();DiagramSource.Block block=null;for(DiagramSource.Block b:DiagramSource.find(body.getText().toString()))if(b.start==start&&b.end==end){block=b;break;}if(block==null)return;final DiagramSource.Block selected=block;
+        new PocketDialog.Builder(this).setTitle("แผนภาพในโน้ต").setItems(new String[]{"เปิด / แก้ไขแผนภาพ","แทรกแผนภาพใหม่ถัดจากนี้","ลบแผนภาพ"},(d,which)->{if(which==0){if(saveNote(false))launchDiagram(selected);}else if(which==1){body.setSelection(Math.min(body.length(),selected.end));insertDiagram();}else confirm("ลบแผนภาพนี้?","ย้อนกลับได้ด้วยปุ่มย้อนกลับข้อความ",()->{rememberNote(false);loading=true;try{body.getText().delete(selected.start,selected.end);}finally{loading=false;}changed();refreshDiagramCard();updateNoteTools();});}).show();
     }
     private void openDiagram() {
         if(!editor||!saveNote(false))return;keyboardOff();List<DiagramSource.Block> found=DiagramSource.find(body.getText().toString());
@@ -304,7 +309,7 @@ public class MainActivity extends Activity {
         }catch(Exception e) {toast("นำแผนภาพกลับเข้าโน้ตไม่ได้ กรุณาลองอีกครั้ง");}
     }
     private void applyDiagram(int start,int end,String code) {
-        String text=DiagramSource.fenced(code);if(start>0&&body.getText().charAt(start-1)!='\n')text="\n"+text;if(end<body.length()&&body.getText().charAt(end)!='\n')text+="\n";
+        if(body instanceof InlineNoteEditText)((InlineNoteEditText)body).retryFailures();String text=DiagramSource.fenced(code);if(start>0&&body.getText().charAt(start-1)!='\n')text="\n"+text;if(end<body.length()&&body.getText().charAt(end)!='\n')text+="\n";
         rememberNote(false);loading=true;try {body.getText().replace(start,end,text);body.setSelection(start+text.length());}finally {loading=false;}changed();updateNoteTools();refreshDiagramCard();saveNote(true);
     }
     private void createNoteToolbar() {
@@ -320,7 +325,7 @@ public class MainActivity extends Activity {
         noteTool(row,"color","สีข้อความ","สี",()->noteColor(false));noteTool(row,"highlight","ไฮไลต์ข้อความ","ไฮไลต์",()->noteColor(true));
         noteTool(row,"bullet","รายการหัวข้อ","หัวข้อย่อย",()->prefixNoteLines("• "));noteTool(row,"number","รายการเลขลำดับ","ลำดับ",()->prefixNoteLines("number"));
         noteTool(row,"clear","ล้างรูปแบบ","ล้างรูปแบบ",()->formatNote("clear",0));noteTool(row,"find","ค้นหาในโน้ต","ค้นหา",this::findInNote);
-        noteTool(row,"diagram","แผนภาพ Mermaid","แผนภาพ",this::openDiagram);
+        noteTool(row,"diagram","แทรกแผนภาพตรงเคอร์เซอร์","แผนภาพ",this::insertDiagram);
         noteTool(row,"tools","จัดลำดับเครื่องมือ","จัดแถบ",this::arrangeNoteTools);applyNoteToolOrder();updateRecentTool();
     }
     private ReaderIconButton noteTool(LinearLayout row,String symbol,String label,String caption,Runnable action) {
@@ -793,10 +798,10 @@ public class MainActivity extends Activity {
             });
         },"NotePocket-IO").start();
     }
-    public boolean isWorkIdle() {return (library==null||editor||pdf!=null||!library.isLoading())&&(noteSaver==null||!noteSaver.isRunning())&&!pdfRendering;}
-    @Override protected void onResume() {super.onResume();if(!syncReceiverRegistered) {IntentFilter filter=new IntentFilter(SyncScheduler.DONE);androidx.core.content.ContextCompat.registerReceiver(this,syncReceiver,filter,androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED);syncReceiverRegistered=true;}SyncScheduler.enqueue(getApplicationContext());if(driveResumeRefresh&&!editor&&pdf==null) {driveResumeRefresh=false;home();}if(libraryReleased&&library!=null&&!editor&&pdf==null) {libraryReleased=false;library.reload();}if(pdfImageReleased&&pdf!=null) renderPage(pageIndex);}
+    public boolean isWorkIdle() {return (!(body instanceof InlineNoteEditText)||((InlineNoteEditText)body).isIdle())&&(library==null||editor||pdf!=null||!library.isLoading())&&(noteSaver==null||!noteSaver.isRunning())&&!pdfRendering;}
+    @Override protected void onResume() {super.onResume();if(!syncReceiverRegistered) {IntentFilter filter=new IntentFilter(SyncScheduler.DONE);androidx.core.content.ContextCompat.registerReceiver(this,syncReceiver,filter,androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED);syncReceiverRegistered=true;}SyncScheduler.enqueue(getApplicationContext());if(editor&&body instanceof InlineNoteEditText)((InlineNoteEditText)body).refreshDiagrams();if(driveResumeRefresh&&!editor&&pdf==null) {driveResumeRefresh=false;home();}if(libraryReleased&&library!=null&&!editor&&pdf==null) {libraryReleased=false;library.reload();}if(pdfImageReleased&&pdf!=null) renderPage(pageIndex);}
     @Override public void onTrimMemory(int level) {
-        super.onTrimMemory(level);Fonts.trimMemory();noteHistory.clear();if(editor) updateNoteTools();if(pageView!=null) pageView.trimCaches();
+        super.onTrimMemory(level);if(body instanceof InlineNoteEditText)((InlineNoteEditText)body).trim();Fonts.trimMemory();noteHistory.clear();if(editor) updateNoteTools();if(pageView!=null) pageView.trimCaches();
         if(level>=TRIM_MEMORY_UI_HIDDEN) {if(library!=null&&!editor&&pdf==null) {library.releaseRows();libraryReleased=true;}if(pdf!=null&&pageView!=null) {pageView.commitGesture();pdfGeneration++;pdfRendering=false;pageView.releaseImage();if(pageBitmap!=null) {pageBitmap.recycle();pageBitmap=null;}pdfImageReleased=true;}}
     }
     @Override protected void onPause() {if(syncReceiverRegistered) {unregisterReceiver(syncReceiver);syncReceiverRegistered=false;}if(pageView!=null) pageView.commitGesture();saveNote(false);super.onPause();}
@@ -813,5 +818,5 @@ public class MainActivity extends Activity {
         if(paletteWindow!=null&&paletteWindow.isShowing()) paletteWindow.dismiss();else if(pdf!=null&&fullscreen) setFullscreen(false);else if(pdf!=null) returnFromPdf();else if(editor) {if(saveNote(false)) {keyboardOff();home();}}
         else if(!tab.equals("notes")||!filter.equals("all")) {tab="notes";filter="all";query="";home();}else super.onBackPressed();
     }
-    @Override protected void onDestroy() {if(activeSoapDialog!=null) activeSoapDialog.dismiss();if(activeTextDialog!=null) activeTextDialog.dismiss();handler.removeCallbacks(autosave);closePdf();if(progress!=null) {progress.dismiss();progress=null;}if(library!=null) library.close();if(noteSaver!=null) noteSaver.close();handler.removeCallbacks(cursorFollower);handler.removeCallbacks(diagramRefresh);pdfWorker.shutdown();releaseEditorSync();releasePdfSync();if(!busy) store.close();super.onDestroy();}
+    @Override protected void onDestroy() {if(body instanceof InlineNoteEditText)((InlineNoteEditText)body).close();if(activeSoapDialog!=null) activeSoapDialog.dismiss();if(activeTextDialog!=null) activeTextDialog.dismiss();handler.removeCallbacks(autosave);closePdf();if(progress!=null) {progress.dismiss();progress=null;}if(library!=null) library.close();if(noteSaver!=null) noteSaver.close();handler.removeCallbacks(cursorFollower);handler.removeCallbacks(diagramRefresh);pdfWorker.shutdown();releaseEditorSync();releasePdfSync();if(!busy) store.close();super.onDestroy();}
 }
