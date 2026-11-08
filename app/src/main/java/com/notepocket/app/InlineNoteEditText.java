@@ -24,7 +24,7 @@ final class InlineNoteEditText extends EditText implements AutoCloseable {
     @Override public android.view.autofill.AutofillValue getAutofillValue(){return null;}
     int dp(int value){return Math.round(value*getResources().getDisplayMetrics().density);}
     void attach(LinearLayout host,DiagramClick click){this.click=click;renderer=new InlineDiagramRenderer(getContext(),host,(key,success)->{if(closing)return;if(success)load(key);else{failed.add(key);for(InlineDiagramSpan span:spans())if(span.key.equals(key))span.failed=true;invalidate();}});refreshDiagrams();}
-    boolean isIdle(){return decodes==0&&(renderer==null||renderer.isIdle());}
+    boolean isIdle(){return !isLayoutRequested()&&getLayout()!=null&&decodes==0&&(renderer==null||renderer.isIdle());}
     Bitmap bitmap(String key){Bitmap b=bitmaps.get(key);if(b==null&&!closing&&!failed.contains(key)&&DiagramCache.file(getContext(),key).isFile())load(key);return b;}
     void retryFailures(){failed.clear();if(renderer!=null)renderer.clearFailures();}
     InlineDiagramSpan[] spans(){Editable e=getText();return e==null?new InlineDiagramSpan[0]:e.getSpans(0,e.length(),InlineDiagramSpan.class);}
