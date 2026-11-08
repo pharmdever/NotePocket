@@ -290,7 +290,10 @@ public class MainActivity extends Activity {
     private void insertDiagram() {if(!editor||!saveNote(false))return;keyboardOff();launchDiagram(null);}
     private void inlineDiagramMenu(int start,int end) {
         if(!editor||body==null)return;keyboardOff();DiagramSource.Block block=null;for(DiagramSource.Block b:DiagramSource.find(body.getText().toString()))if(b.start==start&&b.end==end){block=b;break;}if(block==null)return;final DiagramSource.Block selected=block;
-        new PocketDialog.Builder(this).setTitle("แผนภาพในโน้ต").setItems(new String[]{"เปิด / แก้ไขแผนภาพ","แทรกแผนภาพใหม่ถัดจากนี้","ลบแผนภาพ"},(d,which)->{if(which==0){if(saveNote(false))launchDiagram(selected);}else if(which==1){body.setSelection(Math.min(body.length(),selected.end));insertDiagram();}else confirm("ลบแผนภาพนี้?","ย้อนกลับได้ด้วยปุ่มย้อนกลับข้อความ",()->{rememberNote(false);loading=true;try{body.getText().delete(selected.start,selected.end);}finally{loading=false;}changed();refreshDiagramCard();updateNoteTools();});}).show();
+        new PocketDialog.Builder(this).setTitle("แผนภาพในโน้ต").setItems(new String[]{"เปิด / แก้ไขแผนภาพ","เขียนข้อความก่อนภาพ","เขียนข้อความหลังภาพ","แทรกแผนภาพใหม่ถัดจากนี้","ลบแผนภาพ"},(d,which)->{if(which==0){if(saveNote(false))launchDiagram(selected);}else if(which==1||which==2){writeBesideDiagram(which==1?selected.start:selected.end,which==1);}else if(which==3){body.setSelection(Math.min(body.length(),selected.end));insertDiagram();}else confirm("ลบแผนภาพนี้?","ย้อนกลับได้ด้วยปุ่มย้อนกลับข้อความ",()->{rememberNote(false);loading=true;try{body.getText().delete(selected.start,selected.end);}finally{loading=false;}changed();refreshDiagramCard();updateNoteTools();});}).show();
+    }
+    private void writeBesideDiagram(int at,boolean before) {
+        rememberNote(false);loading=true;try{body.getText().insert(at,"\n");body.setSelection(before?at:at+1);}finally{loading=false;}changed();refreshDiagramCard();updateNoteTools();body.requestFocus();followNoteCursor();body.post(()->((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).showSoftInput(body,InputMethodManager.SHOW_IMPLICIT));
     }
     private void openDiagram() {
         if(!editor||!saveNote(false))return;keyboardOff();List<DiagramSource.Block> found=DiagramSource.find(body.getText().toString());
@@ -309,7 +312,7 @@ public class MainActivity extends Activity {
         }catch(Exception e) {toast("นำแผนภาพกลับเข้าโน้ตไม่ได้ กรุณาลองอีกครั้ง");}
     }
     private void applyDiagram(int start,int end,String code) {
-        if(body instanceof InlineNoteEditText)((InlineNoteEditText)body).retryFailures();String text=DiagramSource.fenced(code);if(start>0&&body.getText().charAt(start-1)!='\n')text="\n"+text;if(end<body.length()&&body.getText().charAt(end)!='\n')text+="\n";
+        if(body instanceof InlineNoteEditText)((InlineNoteEditText)body).retryFailures();String text=DiagramSource.fenced(code);if(start>0&&body.getText().charAt(start-1)!='\n')text="\n"+text;if(end>=body.length()||body.getText().charAt(end)!='\n')text+="\n";
         rememberNote(false);loading=true;try {body.getText().replace(start,end,text);body.setSelection(start+text.length());}finally {loading=false;}changed();updateNoteTools();refreshDiagramCard();saveNote(true);
     }
     private void createNoteToolbar() {
