@@ -1,0 +1,24 @@
+name: Inspect diagram QA
+on:
+  push:
+    paths: ['.github/workflows/inspect-diagram.yml']
+permissions:
+  actions: read
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Read renderer errors from QA artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          curl --fail --location --silent --show-error -H "Authorization: Bearer ${GH_TOKEN}" https://api.github.com/repos/pharmdever/NotePocket/actions/artifacts/13605260787/zip -o /tmp/qa.zip
+          python3 - <<'PY'
+          import zipfile
+          with zipfile.ZipFile('/tmp/qa.zip') as z:
+              name=next(n for n in z.namelist() if n.endswith('logcat.txt'))
+              lines=z.read(name).decode(errors='replace').splitlines()
+              for line in lines:
+                  if any(key.lower() in line.lower() for key in ['CONSOLE','chromium','Mermaid','denied','tainted']):print(line)
+          PY
