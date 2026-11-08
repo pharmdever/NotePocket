@@ -28,6 +28,6 @@ window.exportDiagram=async function(){
    const data=canvas.toDataURL('image/png').split(',')[1];if(data.length>16000000)throw Error('Export too large');
    NotePocketDiagram.beginPng();let index=0;for(let at=0;at<data.length;at+=48000)NotePocketDiagram.pngChunk(index++,data.slice(at,at+48000));NotePocketDiagram.endPng();report('ready');
   }finally{URL.revokeObjectURL(url);}
- }catch(e){report('export-error');}
+ }catch(e){window.diagramExportError=e.name+': '+e.message;console.error('NotePocket PNG '+window.diagramExportError);report('export-error');}
 };
 report('loaded');

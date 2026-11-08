@@ -45,6 +45,7 @@ public final class ReaderIconButton extends View {
             case "diagram": canvas.drawRect(8,2,16,8,paint);line(canvas,12,8,12,12);line(canvas,5,12,19,12);line(canvas,5,12,5,16);line(canvas,19,12,19,16);canvas.drawRect(1,16,9,22,paint);canvas.drawRect(15,16,23,22,paint);break;
             case "table": canvas.drawRect(3,4,21,20,paint);line(canvas,3,9,21,9);line(canvas,3,15,21,15);line(canvas,9,4,9,20);line(canvas,15,4,15,20);break;
             case "clear": path(canvas,4,15,13,5,20,12,12,21,9,21,4,15);line(canvas,3,22,21,22);break;
+            case "zoom-in": case "zoom-out": canvas.drawCircle(10,10,6,paint);line(canvas,15,15,22,22);line(canvas,7,10,13,10);if(icon.equals("zoom-in"))line(canvas,10,7,10,13);break;
             case "find": canvas.drawCircle(10,10,6,paint);line(canvas,15,15,22,22);break;
             case "attach": {Path p=new Path();p.moveTo(9,16);p.lineTo(16,9);p.cubicTo(20,5,15,1,12,5);p.lineTo(5,12);p.cubicTo(-1,18,7,25,13,19);p.lineTo(21,11);canvas.drawPath(p,paint);break;}
             case "folder": path(canvas,2,6,10,6,12,9,22,9,22,20,2,20,2,6);break;

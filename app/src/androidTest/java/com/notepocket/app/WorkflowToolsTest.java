@@ -61,6 +61,17 @@ public class WorkflowToolsTest {
     }
     private void field(String key,String text) {onView(withContentDescription("SOAP "+key)).inRoot(androidx.test.espresso.matcher.RootMatchers.isDialog()).perform(scrollTo(),replaceText(text),closeSoftKeyboard());}
     private void tool(String name) {onView(withContentDescription(name)).perform(scrollTo(),click());}
-    private void menu(String item) {onView(withContentDescription("ตัวเลือกตาราง 1")).perform(scrollTo(),click());androidx.test.espresso.Espresso.onData(org.hamcrest.Matchers.hasToString(item)).inRoot(androidx.test.espresso.matcher.RootMatchers.isDialog()).perform(click());}
+    private void menu(String item) {onView(withContentDescription("ตัวเลือกตาราง 1")).perform(scrollTo());
+        onView(withContentDescription("ตัวเลือกตาราง 1")).perform(new androidx.test.espresso.ViewAction() {
+            public org.hamcrest.Matcher<View> getConstraints(){return isDisplayed();}
+            public String getDescription(){return "Wait for table menu geometry after IME dismissal";}
+            public void perform(androidx.test.espresso.UiController controller,View view){
+                android.graphics.Rect last=new android.graphics.Rect(),now=new android.graphics.Rect();long end=android.os.SystemClock.uptimeMillis()+3000;int stable=0;
+                while(android.os.SystemClock.uptimeMillis()<end){controller.loopMainThreadForAtLeast(80);view.getGlobalVisibleRect(now);android.view.WindowInsets insets=view.getRootWindowInsets();boolean ime=android.os.Build.VERSION.SDK_INT>=30&&insets!=null&&insets.isVisible(android.view.WindowInsets.Type.ime());
+                    if(!ime&&!view.isLayoutRequested()&&now.equals(last)){if(++stable>=4)return;}else stable=0;last.set(now);
+                }
+                throw new AssertionError("Table menu did not settle after keyboard closed");
+            }
+        });onView(withContentDescription("ตัวเลือกตาราง 1")).perform(click());androidx.test.espresso.Espresso.onData(org.hamcrest.Matchers.hasToString(item)).inRoot(androidx.test.espresso.matcher.RootMatchers.isDialog()).perform(click());}
     private void screenshot(String name) throws Exception {Thread.sleep(350);Bitmap bitmap=InstrumentationRegistry.getInstrumentation().getUiAutomation().takeScreenshot();File folder=new File(context.getExternalFilesDir(null),"screenshots");folder.mkdirs();try(OutputStream out=new FileOutputStream(new File(folder,name+".png"))) {bitmap.compress(Bitmap.CompressFormat.PNG,100,out);}bitmap.recycle();}
 }

@@ -11,7 +11,7 @@ import base64
 diagnostics=Path('qa-output/logcat.txt')
 if diagnostics.is_file():
     lines=diagnostics.read_text(errors='replace').splitlines()
-    interesting=[line for line in lines if any(word in line for word in ['AutofillManager','FAILED BINDER TRANSACTION','DeadSystem','FATAL EXCEPTION','OutOfMemoryError','ANR in'])]
+    interesting=[line for line in lines if any(word in line for word in ['NotePocketDiagram','NotePocket PNG','CONSOLE','AutofillManager','FAILED BINDER TRANSACTION','DeadSystem','FATAL EXCEPTION','OutOfMemoryError','ANR in'])]
     for line in interesting[-80:]: print('NOTEPOCKET_DIAGNOSTIC:'+line)
     for i,line in enumerate(lines):
         if 'FATAL EXCEPTION' in line:
@@ -32,7 +32,14 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
 # The emulator launcher can ANR during first boot; stop only that unrelated process before UI tests.
 adb shell am force-stop com.google.android.apps.nexuslauncher
-adb shell am instrument -w -e notClass com.notepocket.app.UpdatePersistenceTest,com.notepocket.app.LegacyUpgradeSeedTest,com.notepocket.app.ReleaseUpgradeTest com.notepocket.notes.debug.test/androidx.test.runner.AndroidJUnitRunner | tee qa-output/device-tests.txt
+# Fail early on the new renderer, then run the existing regression suite once.
+adb shell am instrument -w -e class com.notepocket.app.DiagramTest com.notepocket.notes.debug.test/androidx.test.runner.AndroidJUnitRunner | tee qa-output/diagram-tests.txt
+python3 - <<'PYDIAGRAM'
+from pathlib import Path
+text=Path('qa-output/diagram-tests.txt').read_text()
+assert 'OK (' in text and 'FAILURES' not in text and 'INSTRUMENTATION_FAILED' not in text,text
+PYDIAGRAM
+adb shell am instrument -w -e notClass com.notepocket.app.DiagramTest,com.notepocket.app.UpdatePersistenceTest,com.notepocket.app.LegacyUpgradeSeedTest,com.notepocket.app.ReleaseUpgradeTest com.notepocket.notes.debug.test/androidx.test.runner.AndroidJUnitRunner | tee qa-output/device-tests.txt
 python3 - <<'PY'
 from pathlib import Path
 text=Path('qa-output/device-tests.txt').read_text()
