@@ -232,7 +232,7 @@ public class MainActivity extends Activity {
         noteDiagrams=vertical();page.addView(noteDiagrams);noteTables=vertical();page.addView(noteTables);renderNoteTables();
         attachmentHeading=strong("ไฟล์แนบ",16);page.addView(attachmentHeading);attachments=vertical();page.addView(attachments);
         if(note!=null) {title.setText(note.getAsString("title"));body.setText(NoteFormat.decode(note.getAsString("rich"),note.getAsString("body")));}
-        createNoteToolbar();editor=true;loading=false;((InlineNoteEditText)body).attach(root,this::inlineDiagramMenu);((InlineNoteEditText)body).setPhotoPaste(this::pasteImages);((InlineNoteEditText)body).selectionChanged=()->{handler.removeCallbacks(typingToolsRefresh);handler.post(typingToolsRefresh);};refreshAttachments();updateRecentTool();refreshDiagramCard();
+        createNoteToolbar();editor=true;loading=false;((InlineNoteEditText)body).attach(root,this::inlineDiagramMenu);((InlineNoteEditText)body).setPhotoPaste(this::pasteImages);((InlineNoteEditText)body).committedStyle=(start,end)->{if(editor&&!loading&&typingStyle!=null)typingStyle.apply(body.getText(),start,end);};((InlineNoteEditText)body).selectionChanged=()->{handler.removeCallbacks(typingToolsRefresh);handler.post(typingToolsRefresh);};refreshAttachments();updateRecentTool();refreshDiagramCard();
         TextWatcher change=new TextWatcher() {
             private int at,before,count;
             public void beforeTextChanged(CharSequence value,int start,int count,int after) {rememberNote(true);}
@@ -857,5 +857,5 @@ public class MainActivity extends Activity {
         if(paletteWindow!=null&&paletteWindow.isShowing()) paletteWindow.dismiss();else if(pdf!=null&&fullscreen) setFullscreen(false);else if(pdf!=null) returnFromPdf();else if(editor) {if(saveNote(false)) {keyboardOff();home();}}
         else if(!tab.equals("notes")||!filter.equals("all")) {tab="notes";filter="all";query="";home();}else super.onBackPressed();
     }
-    @Override protected void onDestroy() {if(body instanceof InlineNoteEditText)((InlineNoteEditText)body).close();if(activeSoapDialog!=null) activeSoapDialog.dismiss();if(activeTextDialog!=null) activeTextDialog.dismiss();handler.removeCallbacks(autosave);closePdf();if(progress!=null) {progress.dismiss();progress=null;}if(library!=null) library.close();if(noteSaver!=null) noteSaver.close();handler.removeCallbacks(cursorFollower);handler.removeCallbacks(diagramRefresh);pdfWorker.shutdown();releaseEditorSync();releasePdfSync();if(!busy) store.close();super.onDestroy();}
+    @Override protected void onDestroy() {if(body instanceof InlineNoteEditText)((InlineNoteEditText)body).close();if(activeSoapDialog!=null) activeSoapDialog.dismiss();if(activeTextDialog!=null) activeTextDialog.dismiss();handler.removeCallbacks(autosave);closePdf();if(progress!=null) {progress.dismiss();progress=null;}if(library!=null) library.close();if(noteSaver!=null) noteSaver.close();handler.removeCallbacks(cursorFollower);handler.removeCallbacks(typingToolsRefresh);handler.removeCallbacks(diagramRefresh);pdfWorker.shutdown();releaseEditorSync();releasePdfSync();if(!busy) store.close();super.onDestroy();}
 }
