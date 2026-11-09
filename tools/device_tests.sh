@@ -33,20 +33,20 @@ adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
 # The emulator launcher can ANR during first boot; stop only that unrelated process before UI tests.
 adb shell am force-stop com.google.android.apps.nexuslauncher
 # Fail early on the new renderer, then run the existing regression suite once.
-adb shell am instrument -w -e class com.notepocket.app.InlineDiagramTest,com.notepocket.app.DiagramTest com.notepocket.notes.debug.test/androidx.test.runner.AndroidJUnitRunner | tee qa-output/diagram-tests.txt
+adb shell am instrument -w -e class com.notepocket.app.PhotoTest,com.notepocket.app.InlineDiagramTest,com.notepocket.app.DiagramTest com.notepocket.notes.debug.test/androidx.test.runner.AndroidJUnitRunner | tee qa-output/diagram-tests.txt
 python3 - <<'PYDIAGRAM'
 from pathlib import Path
 text=Path('qa-output/diagram-tests.txt').read_text()
 assert 'OK (' in text and 'FAILURES' not in text and 'INSTRUMENTATION_FAILED' not in text,text
 PYDIAGRAM
-adb shell am instrument -w -e notClass com.notepocket.app.InlineDiagramTest,com.notepocket.app.DiagramTest,com.notepocket.app.UpdatePersistenceTest,com.notepocket.app.LegacyUpgradeSeedTest,com.notepocket.app.ReleaseUpgradeTest com.notepocket.notes.debug.test/androidx.test.runner.AndroidJUnitRunner | tee qa-output/device-tests.txt
+adb shell am instrument -w -e notClass com.notepocket.app.PhotoTest,com.notepocket.app.InlineDiagramTest,com.notepocket.app.DiagramTest,com.notepocket.app.UpdatePersistenceTest,com.notepocket.app.LegacyUpgradeSeedTest,com.notepocket.app.ReleaseUpgradeTest com.notepocket.notes.debug.test/androidx.test.runner.AndroidJUnitRunner | tee qa-output/device-tests.txt
 python3 - <<'PY'
 from pathlib import Path
 text=Path('qa-output/device-tests.txt').read_text()
 assert 'OK (' in text and 'FAILURES' not in text and 'INSTRUMENTATION_FAILED' not in text, text
 PY
 # Raise the version code while keeping the package and key, then install without clearing data.
-gradle :app:assembleDebug -PnotePocketVersionCode=14
+gradle :app:assembleDebug -PnotePocketVersionCode=15
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell am instrument -w -e class com.notepocket.app.UpdatePersistenceTest com.notepocket.notes.debug.test/androidx.test.runner.AndroidJUnitRunner | tee qa-output/update-tests.txt
 python3 - <<'PY'

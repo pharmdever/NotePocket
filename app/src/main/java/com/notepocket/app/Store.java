@@ -68,7 +68,7 @@ public final class Store extends SQLiteOpenHelper {
         return rows.isEmpty()?null:rows.get(0);
     }
     private long saveRecord(long id,ContentValues values,String folder) {
-        SQLiteDatabase db=getWritableDatabase();db.beginTransactionNonExclusive();try {createFolder(folder);values.put("folder",folder);values.put("updated",System.currentTimeMillis());if(id<0) id=db.insertOrThrow("notes",null,values);else if(db.update("notes",values,"id=?",new String[]{""+id})!=1) throw new IllegalStateException("Note missing");db.setTransactionSuccessful();return id;}finally {db.endTransaction();}
+        SQLiteDatabase db=getWritableDatabase();db.beginTransactionNonExclusive();try {String previous="";if(id>=0){try(Cursor c=db.rawQuery("SELECT body FROM notes WHERE id=?",new String[]{""+id})){if(c.moveToFirst())previous=c.getString(0);}}createFolder(folder);values.put("folder",folder);values.put("updated",System.currentTimeMillis());if(id<0) id=db.insertOrThrow("notes",null,values);else if(db.update("notes",values,"id=?",new String[]{""+id})!=1) throw new IllegalStateException("Note missing");InlineImages.reconcile(db,id,previous,values.getAsString("body"));db.setTransactionSuccessful();return id;}finally {db.endTransaction();}
     }
     private ContentValues values(String title,String body,String rich) {ContentValues v=new ContentValues();v.put("title",title.trim().isEmpty()?"ไม่มีชื่อ":title.trim());v.put("body",body);v.put("rich",rich);return v;}
     public long save(long id,String title,String body,String rich,String folder) {return saveRecord(id,values(title,body,rich),folder);}
@@ -97,6 +97,7 @@ public final class Store extends SQLiteOpenHelper {
     public void eraseDoc(String id) {
         SQLiteDatabase db=getWritableDatabase();db.beginTransaction();
         try {
+            for(ContentValues note:query("SELECT id,body,rich FROM notes WHERE instr(body,?)>0", "](notepocket-image:"+id+")")){String body=note.getAsString("body");if(!InlineImages.ids(body).contains(id))continue;InlineImages.Mapped mapped=InlineImages.remove(body,note.getAsString("rich"),id);ContentValues v=new ContentValues();v.put("body",mapped.body);v.put("rich",mapped.rich);v.put("updated",System.currentTimeMillis());db.update("notes",v,"id=?",new String[]{note.getAsString("id")});}
             db.delete("note_docs","doc_id=?",new String[]{id});db.delete("page_notes","doc_id=?",new String[]{id});
             db.delete("page_text","doc_id=?",new String[]{id});db.delete("page_ink","doc_id=?",new String[]{id});db.delete("reading","doc_id=?",new String[]{id});db.delete("docs","id=?",new String[]{id});db.setTransactionSuccessful();
         } finally { db.endTransaction(); }

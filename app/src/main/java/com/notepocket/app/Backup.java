@@ -79,6 +79,7 @@ public final class Backup {
                     try(InputStream in=new FileInputStream(source);OutputStream out=new FileOutputStream(dest)) { copy(in,out,LIMIT); }
                     ContentValues v=new ContentValues();v.put("id",id);v.put("name",row.getString("name"));v.put("mime",row.getString("mime"));v.put("size",dest.length());db.insertOrThrow("docs",null,v);docs.put(old,id);
                 }
+                for(Long note:notes.values()){ContentValues saved=store.note(note);InlineImages.Mapped mapped=InlineImages.remap(saved.getAsString("body"),saved.getAsString("rich"),docs);ContentValues v=new ContentValues();v.put("body",mapped.body);v.put("rich",mapped.rich);db.update("notes",v,"id=?",new String[]{""+note});}
                 input=rows(manifest,"fonts");
                 for(int i=0;i<input.length();i++) {
                     JSONObject row=input.getJSONObject(i);String old=row.getString("id");validId(old);if(fonts.containsKey(old)) throw new IOException("Duplicate font");
@@ -92,6 +93,7 @@ public final class Backup {
                     if(note==null||doc==null) throw new IOException("Broken attachment");
                     ContentValues v=new ContentValues();v.put("note_id",note);v.put("doc_id",doc);db.insertOrThrow("note_docs",null,v);
                 }
+                for(Long note:notes.values())InlineImages.reconcile(db,note,"",store.note(note).getAsString("body"));
                 for(String table:new String[]{"page_notes","reading","page_ink","page_text"}) {
                     input=rows(manifest,table);
                     for(int i=0;i<input.length();i++) {

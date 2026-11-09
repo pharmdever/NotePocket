@@ -1,0 +1,32 @@
+package com.notepocket.app;
+
+import android.app.*;
+import android.content.*;
+import android.graphics.*;
+import android.os.*;
+import android.view.*;
+import android.widget.*;
+import java.io.*;
+import java.util.concurrent.*;
+
+/** Private local image viewer with pan, pinch zoom and export of the original file. */
+public final class PhotoActivity extends Activity {
+    private String id,name,mime;private PhotoView photo;private TextView status;private volatile boolean closed;
+    private final ExecutorService worker=Executors.newSingleThreadExecutor();
+    private int dp(int value){return Math.round(value*getResources().getDisplayMetrics().density);}
+    @Override public void onCreate(Bundle state){super.onCreate(state);SyncRuntime.enterEditor();id=getIntent().getStringExtra("doc");try(Store store=new Store(this)){java.util.List<ContentValues> rows=store.query("SELECT name,mime FROM docs WHERE id=?",id);if(rows.isEmpty())throw new IOException();name=rows.get(0).getAsString("name");mime=rows.get(0).getAsString("mime");InlineImages.file(this,id);}catch(Exception e){finish();return;}
+        LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setBackgroundColor(PocketTheme.CREAM);setContentView(root);root.setOnApplyWindowInsetsListener((v,i)->{v.setPadding(dp(8),i.getSystemWindowInsetTop(),dp(8),i.getSystemWindowInsetBottom());return i;});root.requestApplyInsets();LinearLayout header=new LinearLayout(this);header.setGravity(Gravity.CENTER_VERTICAL);root.addView(header);ReaderIconButton back=new ReaderIconButton(this,"back","กลับจากรูปภาพ",null,this::finish);header.addView(back,new LinearLayout.LayoutParams(dp(48),dp(48)));TextView title=new TextView(this);title.setText(name);title.setTextColor(PocketTheme.INK);title.setTextSize(18);title.setSingleLine();title.setEllipsize(android.text.TextUtils.TruncateAt.END);header.addView(title,new LinearLayout.LayoutParams(0,-2,1));ReaderIconButton fit=new ReaderIconButton(this,"full","รูปภาพพอดีจอ",null,()->photo.fit());header.addView(fit,new LinearLayout.LayoutParams(dp(48),dp(48)));ReaderIconButton export=new ReaderIconButton(this,"share","ส่งออกรูปต้นฉบับ",null,()->{Intent i=new Intent(Intent.ACTION_CREATE_DOCUMENT);i.setType(mime);i.addCategory(Intent.CATEGORY_OPENABLE);i.putExtra(Intent.EXTRA_TITLE,name);startActivityForResult(i,42);});header.addView(export,new LinearLayout.LayoutParams(dp(48),dp(48)));status=new TextView(this);status.setText("กำลังเปิดรูป…");status.setTextColor(PocketTheme.MUTED);status.setPadding(dp(8),dp(6),dp(8),dp(6));root.addView(status);photo=new PhotoView(this);photo.setContentDescription("รูปภาพในโน้ต");root.addView(photo,new LinearLayout.LayoutParams(-1,0,1));worker.execute(()->{Bitmap bitmap=null;try{bitmap=InlineImages.decode(InlineImages.file(this,id),1600,4000000);}catch(Exception|OutOfMemoryError ignored){}final Bitmap result=bitmap;runOnUiThread(()->{if(closed){if(result!=null)result.recycle();return;}if(result==null)status.setText("เปิดรูปไม่ได้ ไฟล์ต้นฉบับยังคงอยู่ สามารถส่งออกเพื่อตรวจสอบได้");else{photo.setBitmap(result);status.setText("ใช้สองนิ้วซูม ลากเพื่อเลื่อน · แตะสองครั้งเพื่อขยาย");}});});}
+    @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(request!=42||result!=RESULT_OK||data==null||data.getData()==null)return;android.net.Uri uri=data.getData();worker.execute(()->{boolean ok=false;try(InputStream in=new FileInputStream(InlineImages.file(this,id));OutputStream out=getContentResolver().openOutputStream(uri,"wt")){if(out==null)throw new IOException();Backup.copy(in,out,512L*1024*1024);ok=true;}catch(Exception ignored){}final boolean saved=ok;runOnUiThread(()->{if(!closed)status.setText(saved?"ส่งออกรูปต้นฉบับแล้ว":"ส่งออกไม่ได้ ตรวจสอบตำแหน่งบันทึกและพื้นที่ว่าง");});});}
+    @Override protected void onDestroy(){closed=true;worker.shutdownNow();if(photo!=null)photo.release();SyncRuntime.leaveEditor();super.onDestroy();}
+    private static final class PhotoView extends View {
+        private Bitmap bitmap;private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);private float zoom=1,dx,dy,lastX,lastY;private final ScaleGestureDetector scale;private final GestureDetector gestures;
+        PhotoView(Context c){super(c);setBackgroundColor(android.graphics.Color.WHITE);scale=new ScaleGestureDetector(c,new ScaleGestureDetector.SimpleOnScaleGestureListener(){@Override public boolean onScale(ScaleGestureDetector d){float next=Math.max(1,Math.min(8,zoom*d.getScaleFactor()));float ratio=next/zoom;dx=(dx-(d.getFocusX()-getWidth()/2f))*ratio+(d.getFocusX()-getWidth()/2f);dy=(dy-(d.getFocusY()-getHeight()/2f))*ratio+(d.getFocusY()-getHeight()/2f);zoom=next;clamp();invalidate();return true;}});gestures=new GestureDetector(c,new GestureDetector.SimpleOnGestureListener(){@Override public boolean onDoubleTap(android.view.MotionEvent e){zoom=zoom>1?1:2.5f;dx=dy=0;clamp();invalidate();return true;}});}
+        void setBitmap(Bitmap value){bitmap=value;fit();}void fit(){zoom=1;dx=dy=0;invalidate();}void release(){if(bitmap!=null){bitmap.recycle();bitmap=null;}}
+        private float base(){return bitmap==null?1:Math.min(getWidth()/(float)bitmap.getWidth(),getHeight()/(float)bitmap.getHeight());}
+        private void clamp(){if(bitmap==null)return;float x=Math.max(0,(bitmap.getWidth()*base()*zoom-getWidth())/2),y=Math.max(0,(bitmap.getHeight()*base()*zoom-getHeight())/2);dx=Math.max(-x,Math.min(x,dx));dy=Math.max(-y,Math.min(y,dy));}
+        @Override protected void onSizeChanged(int w,int h,int ow,int oh){super.onSizeChanged(w,h,ow,oh);clamp();}
+        @Override protected void onDraw(Canvas c){super.onDraw(c);if(bitmap==null)return;float s=base()*zoom,w=bitmap.getWidth()*s,h=bitmap.getHeight()*s;c.drawBitmap(bitmap,null,new RectF((getWidth()-w)/2+dx,(getHeight()-h)/2+dy,(getWidth()+w)/2+dx,(getHeight()+h)/2+dy),paint);}
+        @Override public boolean onTouchEvent(android.view.MotionEvent e){scale.onTouchEvent(e);gestures.onTouchEvent(e);if(e.getActionMasked()==android.view.MotionEvent.ACTION_DOWN){lastX=e.getX();lastY=e.getY();return true;}if(e.getActionMasked()==android.view.MotionEvent.ACTION_MOVE&&!scale.isInProgress()&&e.getPointerCount()==1){dx+=e.getX()-lastX;dy+=e.getY()-lastY;clamp();invalidate();}lastX=e.getX();lastY=e.getY();if(e.getActionMasked()==android.view.MotionEvent.ACTION_UP)performClick();return true;}
+        @Override public boolean performClick(){super.performClick();return true;}
+    }
+}

@@ -42,6 +42,7 @@ public final class ReaderIconButton extends View {
             case "bullet": case "number": for(int i=0;i<3;i++) {int y=6+i*6;line(canvas,9,y,21,y);if(icon.equals("bullet")) {paint.setStyle(Paint.Style.FILL);canvas.drawCircle(3,y,1.3f,paint);paint.setStyle(Paint.Style.STROKE);}else {paint.setStyle(Paint.Style.FILL);paint.setTextSize(6);canvas.drawText(""+(i+1),2,y+2,paint);paint.setStyle(Paint.Style.STROKE);}}break;
             case "check": canvas.drawRoundRect(new RectF(3,3,21,21),2,2,paint);path(canvas,7,12,11,16,18,8);break;
             case "soap": canvas.drawRoundRect(new RectF(4,3,20,22),2,2,paint);line(canvas,9,2,15,2);line(canvas,8,8,16,8);line(canvas,8,12,16,12);line(canvas,8,16,14,16);break;
+            case "photo": canvas.drawRoundRect(new RectF(2,3,22,21),2,2,paint);canvas.drawCircle(8,8,2,paint);path(canvas,3,19,10,12,14,16,18,11,22,16);break;
             case "diagram": canvas.drawRect(8,2,16,8,paint);line(canvas,12,8,12,12);line(canvas,5,12,19,12);line(canvas,5,12,5,16);line(canvas,19,12,19,16);canvas.drawRect(1,16,9,22,paint);canvas.drawRect(15,16,23,22,paint);break;
             case "table": canvas.drawRect(3,4,21,20,paint);line(canvas,3,9,21,9);line(canvas,3,15,21,15);line(canvas,9,4,9,20);line(canvas,15,4,15,20);break;
             case "clear": path(canvas,4,15,13,5,20,12,12,21,9,21,4,15);line(canvas,3,22,21,22);break;

@@ -20,7 +20,7 @@ import java.util.*;
 
 public class MainActivity extends Activity {
     private static final int GREEN=PocketTheme.FOREST,INK=PocketTheme.INK,MUTED=PocketTheme.MUTED,BG=PocketTheme.CREAM,LINE=PocketTheme.LINE;
-    private static final int PICK=10,EXPORT=11,BACKUP=12,RESTORE=13,ANNOTATED=14,FONT=15,CSV=16,DIAGRAM=17;
+    private static final int PICK=10,EXPORT=11,BACKUP=12,RESTORE=13,ANNOTATED=14,FONT=15,CSV=16,DIAGRAM=17,IMAGE=18;
     private Store store;
     private boolean syncEditorHeld,syncPdfHeld,driveResumeRefresh,syncReceiverRegistered;
     private final BroadcastReceiver syncReceiver=new BroadcastReceiver() {public void onReceive(Context c,Intent i) {if(!editor&&pdf==null&&!busy) {if(tab.equals("settings")) home();else refresh();}}};
@@ -40,6 +40,7 @@ public class MainActivity extends Activity {
     private EditText title,body;
     private LinearLayout noteHeader,noteToolbar,noteTables,noteToolsRow,noteDiagrams;
     private String pendingDiagram;
+    private int photoAt=-1;private long photoNote=-1;private String photoHash;
     private final Runnable diagramRefresh=this::refreshDiagramCard;
     private ReaderIconButton recentTool;
     private SoapDraft soapDraft=new SoapDraft();
@@ -52,7 +53,7 @@ public class MainActivity extends Activity {
     private List<NoteTable> tables=new ArrayList<>();
     private NoteHistory noteHistory=new NoteHistory();
     private final Map<String,ReaderIconButton> noteToolIcons=new HashMap<>();
-    private TextView savedLabel,pageLabel,bookmarkButton,inkStatus;
+    private TextView savedLabel,pageLabel,bookmarkButton,inkStatus,attachmentHeading;
     private Button readMode,penMode,highlightMode;
     private String annotatedExportId;
     private LinearLayout readerHeader,readerFooter;
@@ -85,7 +86,7 @@ public class MainActivity extends Activity {
         super.onCreate(state);if(Build.VERSION.SDK_INT>=29) {android.view.contentcapture.ContentCaptureManager capture=getSystemService(android.view.contentcapture.ContentCaptureManager.class);if(capture!=null) capture.setContentCaptureEnabled(false);}store=new Store(getApplicationContext());store.getWritableDatabase();
         if(state!=null) {
             tab=state.getString("tab","notes");filter=state.getString("filter","all");query=state.getString("query","");
-            pendingDiagram=state.getString("pendingDiagram");pendingAttach=state.getLong("pendingAttach",-1);exportId=state.getString("exportId");annotatedExportId=state.getString("annotatedExportId");
+            photoAt=state.getInt("photoAt",-1);photoNote=state.getLong("photoNote",-1);photoHash=state.getString("photoHash");pendingDiagram=state.getString("pendingDiagram");pendingAttach=state.getLong("pendingAttach",-1);exportId=state.getString("exportId");annotatedExportId=state.getString("annotatedExportId");
             if(state.getString("pdfId")!=null) {pdfReturnNote=state.getLong("pdfReturnNote",-1);openPdf(state.getString("pdfId"),state.getString("pdfName","PDF"),state.getInt("page",0),pdfReturnNote);if(pdf!=null) {inkMode(state.getInt("pdfMode",0)==PdfPageView.SELECT?PdfPageView.READ:state.getInt("pdfMode",0));setFullscreen(state.getBoolean("fullscreen"));String draft=state.getString("textDraft");if(draft!=null) handler.post(()->{TextBox box=TextBox.decode(draft).get(0);editTextBox(box,box.x,box.y);});}return;}
             if(state.getBoolean("editor")) {edit(state.getLong("noteId",-1));
                 if(editor) {int start=Math.max(0,Math.min(state.getInt("noteStart",0),body.length())),end=Math.max(0,Math.min(state.getInt("noteEnd",start),body.length()));body.setSelection(start,end);expandedTableId=state.getString("expandedTable",expandedTableId);tablePages.put(expandedTableId,state.getInt("tablePage",0));renderNoteTables();final String focusTag=state.getString("tableFocus");if(focusTag!=null) noteTables.post(()->{View field=noteTables.findViewWithTag(focusTag);if(field!=null) field.requestFocus();});final int y=state.getInt("noteScroll",0);noteScroll.post(()->noteScroll.scrollTo(0,y));if(state.getBoolean("soapOpen")) handler.post(this::soapEditor);}return; }
@@ -209,7 +210,7 @@ public class MainActivity extends Activity {
     private void releaseEditorViews() {if(body instanceof InlineNoteEditText)((InlineNoteEditText)body).close();releaseEditorSync();if(noteSaver!=null) {noteSaver.close();noteSaver=null;}handler.removeCallbacks(cursorFollower);title=body=null;noteHeader=noteToolbar=noteTables=noteToolsRow=noteDiagrams=null;handler.removeCallbacks(diagramRefresh);noteScroll=null;noteToolStatus=null;noteUndo=noteRedo=recentTool=null;noteToolIcons.clear();noteHistory.clear();tables=new ArrayList<>();soapDraft=new SoapDraft();}
     private void edit(long id) {
         if(editor&&!saveNote(false)) return;if(body instanceof InlineNoteEditText)((InlineNoteEditText)body).close();holdEditorSync();if(library!=null) {library.close();library=null;}if(noteSaver!=null) noteSaver.close();noteRevision=0;final long epoch=++editorEpoch;expandedTableId="";tablePages.clear();
-        noteSaver=new EditorSaver(store,id,(revision,saved,failure)->{if(isDestroyed()||epoch!=editorEpoch||!editor) return;if(failure==null) {noteId=saved;if(revision==noteRevision) {dirty=false;savedLabel.setText("บันทึกแล้ว  ·  "+folder);}}else {savedLabel.setText("บันทึกไม่สำเร็จ — ตรวจสอบพื้นที่ว่าง");}});
+        noteSaver=new EditorSaver(store,id,(revision,saved,failure)->{if(isDestroyed()||epoch!=editorEpoch||!editor) return;if(failure==null) {noteId=saved;if(revision==noteRevision) {dirty=false;savedLabel.setText("บันทึกแล้ว  ·  "+folder);refreshAttachments();}}else {savedLabel.setText("บันทึกไม่สำเร็จ — ตรวจสอบพื้นที่ว่าง");}});
         closePdf();pdfReturnNote=-1;editor=false;loading=true;noteId=id;dirty=false;
         ContentValues note=id<0?null:store.note(id);
         if(id>=0&&(note==null||note.getAsInteger("deleted")==1)) {home();toast("ไม่พบโน้ตนี้");return;}
@@ -227,9 +228,9 @@ public class MainActivity extends Activity {
         body.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE|android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
         page.addView(body,new LinearLayout.LayoutParams(-1,-2));gap(page,12);
         noteDiagrams=vertical();page.addView(noteDiagrams);noteTables=vertical();page.addView(noteTables);renderNoteTables();
-        page.addView(strong("ไฟล์แนบ",16));attachments=vertical();page.addView(attachments);
+        attachmentHeading=strong("ไฟล์แนบ",16);page.addView(attachmentHeading);attachments=vertical();page.addView(attachments);
         if(note!=null) {title.setText(note.getAsString("title"));body.setText(NoteFormat.decode(note.getAsString("rich"),note.getAsString("body")));}
-        createNoteToolbar();editor=true;loading=false;((InlineNoteEditText)body).attach(root,this::inlineDiagramMenu);refreshAttachments();updateRecentTool();refreshDiagramCard();
+        createNoteToolbar();editor=true;loading=false;((InlineNoteEditText)body).attach(root,this::inlineDiagramMenu);((InlineNoteEditText)body).setPhotoPaste(this::pasteImages);refreshAttachments();updateRecentTool();refreshDiagramCard();
         TextWatcher change=new TextWatcher() {
             private int at,before,count;
             public void beforeTextChanged(CharSequence value,int start,int count,int after) {rememberNote(true);}
@@ -289,6 +290,7 @@ public class MainActivity extends Activity {
     }
     private void insertDiagram() {if(!editor||!saveNote(false))return;keyboardOff();launchDiagram(null);}
     private void inlineDiagramMenu(int start,int end) {
+        if(editor&&body!=null)for(InlineImages.Block image:InlineImages.find(body.getText().toString()))if(image.start==start&&image.end==end){inlinePhotoMenu(image);return;}
         if(!editor||body==null)return;keyboardOff();DiagramSource.Block block=null;for(DiagramSource.Block b:DiagramSource.find(body.getText().toString()))if(b.start==start&&b.end==end){block=b;break;}if(block==null)return;final DiagramSource.Block selected=block;
         new PocketDialog.Builder(this).setTitle("แผนภาพในโน้ต").setItems(new String[]{"เปิด / แก้ไขแผนภาพ","เขียนข้อความก่อนภาพ","เขียนข้อความหลังภาพ","แทรกแผนภาพใหม่ถัดจากนี้","ลบแผนภาพ"},(d,which)->{if(which==0){if(saveNote(false))launchDiagram(selected);}else if(which==1||which==2){writeBesideDiagram(which==1?selected.start:selected.end,which==1);}else if(which==3){body.setSelection(Math.min(body.length(),selected.end));insertDiagram();}else confirm("ลบแผนภาพนี้?","ย้อนกลับได้ด้วยปุ่มย้อนกลับข้อความ",()->{rememberNote(false);loading=true;try{body.getText().delete(selected.start,selected.end);}finally{loading=false;}changed();refreshDiagramCard();updateNoteTools();});}).show();
     }
@@ -329,6 +331,7 @@ public class MainActivity extends Activity {
         noteTool(row,"bullet","รายการหัวข้อ","หัวข้อย่อย",()->prefixNoteLines("• "));noteTool(row,"number","รายการเลขลำดับ","ลำดับ",()->prefixNoteLines("number"));
         noteTool(row,"clear","ล้างรูปแบบ","ล้างรูปแบบ",()->formatNote("clear",0));noteTool(row,"find","ค้นหาในโน้ต","ค้นหา",this::findInNote);
         noteTool(row,"diagram","แทรกแผนภาพตรงเคอร์เซอร์","แผนภาพ",this::insertDiagram);
+        noteTool(row,"photo","แทรกรูปภาพตรงเคอร์เซอร์","รูปภาพ",this::photoMenu);
         noteTool(row,"tools","จัดลำดับเครื่องมือ","จัดแถบ",this::arrangeNoteTools);applyNoteToolOrder();updateRecentTool();
     }
     private ReaderIconButton noteTool(LinearLayout row,String symbol,String label,String caption,Runnable action) {
@@ -480,10 +483,24 @@ public class MainActivity extends Activity {
         changed();updateNoteTools();if(saveNote(true)&&activeSoapDialog!=null) activeSoapDialog.dismiss();body.requestFocus();followNoteCursor();
     }
 
+    private void photoMenu(){
+        if(!editor)return;keyboardOff();new PocketDialog.Builder(this).setTitle("แทรกรูปภาพในโน้ต").setItems(new String[]{"เลือกรูปจากเครื่อง","ใช้รูปที่เก็บไว้","วางรูปจากคลิปบอร์ด"},(d,which)->{if(which==0)pickImage();else if(which==1){List<ContentValues> rows=new ArrayList<>();for(ContentValues doc:store.query("SELECT * FROM docs ORDER BY rowid DESC"))if(InlineImages.isImage(doc.getAsString("name"),doc.getAsString("mime")))rows.add(doc);if(rows.isEmpty()){toast("ยังไม่มีรูปที่เก็บไว้ เลือกรูปจากเครื่องได้ครับ");return;}String[] names=new String[rows.size()];for(int i=0;i<names.length;i++)names[i]=rows.get(i).getAsString("name");new PocketDialog.Builder(this).setTitle("เลือกรูปที่เก็บไว้").setItems(names,(dialog,index)->insertStoredPhoto(rows.get(index).getAsString("id"))).show();}else{if(body instanceof InlineNoteEditText){android.content.ClipboardManager clipboard=(android.content.ClipboardManager)getSystemService(CLIPBOARD_SERVICE);ClipData clip=clipboard.getPrimaryClip();boolean image=false;if(clip!=null)for(int i=0;i<clip.getItemCount();i++){Uri u=clip.getItemAt(i).getUri();try{String type=u==null?null:getContentResolver().getType(u);image|=type!=null&&type.startsWith("image/");}catch(Exception ignored){}}if(image){body.onTextContextMenuItem(android.R.id.paste);return;}}toast("คลิปบอร์ดยังไม่มีรูปภาพ กรุณาคัดลอกเป็นรูปหรือเลือกรูปจากเครื่อง");}}).show();
+    }
+    private boolean capturePhotoAnchor(){if(!editor||busy||!saveNote(false))return false;if(InlineImages.ids(body.getText().toString()).size()>=InlineImages.MAX_IMAGES){toast("โน้ตนี้มีรูปครบ 100 รูปแล้ว กรุณาแบ่งเป็นอีกโน้ต");return false;}photoAt=Math.max(0,body.getSelectionEnd());photoNote=noteId;photoHash=SyncJson.hash(body.getText().toString());return true;}
+    private void pickImage(){if(!capturePhotoAnchor())return;Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT);i.addCategory(Intent.CATEGORY_OPENABLE);i.setType("image/*");startActivityForResult(i,IMAGE);}
+    private boolean pasteImages(List<Uri> uris,Runnable release){if(Looper.myLooper()!=Looper.getMainLooper()){runOnUiThread(()->pasteImages(uris,release));return true;}if(uris.isEmpty()||uris.size()>10||!capturePhotoAnchor()){release.run();if(uris.size()>10)toast("วางรูปได้ครั้งละไม่เกิน 10 รูป");return true;}if(InlineImages.ids(body.getText().toString()).size()+uris.size()>InlineImages.MAX_IMAGES){release.run();toast("รูปในโน้ตเกิน 100 รูป กรุณาแบ่งโน้ต");return true;}importImages(new ArrayList<>(uris),release);return true;}
+    private void importImages(List<Uri> uris,Runnable release){
+        if(!editor||busy){release.run();return;}if(photoHash==null&&!capturePhotoAnchor()){release.run();return;}final int at=photoAt;final long target=photoNote;final String hash=photoHash;photoAt=-1;photoHash=null;List<ContentValues> imported=new ArrayList<>();
+        runIo("กำลังเก็บรูปภาพ…",()->{boolean success=false;try{android.database.sqlite.SQLiteDatabase db=store.getWritableDatabase();db.beginTransaction();try{for(Uri uri:uris){String name="รูปภาพ";try(android.database.Cursor c=getContentResolver().query(uri,new String[]{OpenableColumns.DISPLAY_NAME},null,null,null)){if(c!=null&&c.moveToFirst())name=c.getString(0);}try(InputStream in=getContentResolver().openInputStream(uri)){if(in==null)throw new IOException();imported.add(InlineImages.importImage(this,store,in,name));}}db.setTransactionSuccessful();}finally{db.endTransaction();}success=true;return "เก็บรูปภาพแล้ว";}finally{if(!success)for(ContentValues doc:imported)InlineImages.file(this,doc.getAsString("id")).delete();release.run();}},()->{if(!editor||noteId!=target){toast("เก็บรูปไว้ในแท็บเอกสารแล้ว");return;}List<String> ids=new ArrayList<>();for(ContentValues doc:imported)ids.add(doc.getAsString("id"));int position=hash.equals(SyncJson.hash(body.getText().toString()))?Math.min(at,body.length()):body.length();insertPhotos(ids,position);});
+    }
+    private void insertStoredPhoto(String id){if(!capturePhotoAnchor())return;int at=photoAt;photoAt=-1;photoHash=null;List<ContentValues> rows=store.query("SELECT name,mime FROM docs WHERE id=?",id);if(rows.isEmpty()||!InlineImages.isImage(rows.get(0).getAsString("name"),rows.get(0).getAsString("mime"))){toast("ไม่พบรูปภาพนี้");return;}insertPhotos(Collections.singletonList(id),Math.min(at,body.length()));}
+    private void insertPhotos(List<String> ids,int at){StringBuilder text=new StringBuilder();if(at>0&&body.getText().charAt(at-1)!='\n')text.append('\n');for(String id:ids)text.append(InlineImages.marker(id)).append('\n');rememberNote(false);loading=true;try{body.getText().insert(at,text.toString());body.setSelection(Math.min(body.length(),at+text.length()));}finally{loading=false;}((InlineNoteEditText)body).retryFailures();changed();refreshDiagramCard();updateNoteTools();saveNote(true);refreshAttachments();}
+    private void inlinePhotoMenu(InlineImages.Block image){keyboardOff();new PocketDialog.Builder(this).setTitle("รูปภาพในโน้ต").setItems(new String[]{"เปิดรูป / ซูม","เขียนข้อความก่อนภาพ","เขียนข้อความหลังภาพ","แทรกรูปใหม่ถัดจากนี้","ลบรูปจากโน้ต"},(d,which)->{if(which==0){if(saveNote(false))startActivity(new Intent(this,PhotoActivity.class).putExtra("doc",image.id));}else if(which==1||which==2)writeBesideDiagram(which==1?image.start:image.end,which==1);else if(which==3){body.setSelection(Math.min(body.length(),image.end));photoMenu();}else confirm("ลบรูปจากโน้ต?","ไฟล์ต้นฉบับยังอยู่ในแท็บเอกสาร และกด Undo เพื่อคืนรูปได้",()->{rememberNote(false);loading=true;try{body.getText().delete(image.start,image.end);}finally{loading=false;}changed();refreshDiagramCard();updateNoteTools();saveNote(true);refreshAttachments();});}).show();}
     private void attachmentMenu() {
         if(!saveNote(true)) return;keyboardOff();
-        new PocketDialog.Builder(this).setTitle("แนบเอกสารกับโน้ต").setItems(new String[]{"นำเข้าไฟล์จากเครื่อง","เลือกจากเอกสารที่เก็บไว้"},(d,w) -> {
+        new PocketDialog.Builder(this).setTitle("แนบเอกสารกับโน้ต").setItems(new String[]{"นำเข้าไฟล์จากเครื่อง","เลือกจากเอกสารที่เก็บไว้","แทรกรูปในเนื้อหาโน้ต"},(d,w) -> {
             if(w==0) pickDocument(noteId);
+            else if(w==2)photoMenu();
             else {
                 List<ContentValues> docs=store.query("SELECT * FROM docs ORDER BY rowid DESC");
                 if(docs.isEmpty()) {toast("ยังไม่มีเอกสาร กรุณานำเข้าจากเครื่องก่อน");return;}
@@ -495,13 +512,14 @@ public class MainActivity extends Activity {
     private void refreshAttachments() {
         if(attachments==null) return;attachments.removeAllViews();List<ContentValues> docs=store.attachments(noteId);
         if(docs.isEmpty()) attachments.addView(text("แนบ PDF รูปภาพ หรือเอกสารประกอบได้",14,MUTED));
-        for(ContentValues doc:docs) documentCard(attachments,doc,true);
+        Set<String> inline=editor&&body!=null?InlineImages.ids(body.getText().toString()):Collections.emptySet();int visible=0;for(ContentValues doc:docs)if(!inline.contains(doc.getAsString("id"))){documentCard(attachments,doc,true);visible++;}if(attachmentHeading!=null)attachmentHeading.setVisibility(!docs.isEmpty()&&visible==0?View.GONE:View.VISIBLE);
     }
     private void documentCard(LinearLayout parent,ContentValues doc,boolean attached) {
         String id=doc.getAsString("id"),name=doc.getAsString("name"),mime=doc.getAsString("mime");
         LinearLayout c=card(parent);c.addView(text(mime.equals("application/pdf")?"PDF  ·  อ่านและจดประกอบ":"เอกสารแนบ",12,GREEN));
         TextView heading=strong(name,17);heading.setMaxLines(2);heading.setEllipsize(TextUtils.TruncateAt.END);c.addView(heading);
         c.addView(text(android.text.format.Formatter.formatFileSize(this,doc.getAsLong("size")),12,MUTED));
+        if(attached&&InlineImages.isImage(name,mime))c.addView(button("แทรกในโน้ต",()->insertStoredPhoto(id),true));
         LinearLayout buttons=horizontal(c);
         action(buttons,"เปิด",() -> openDocument(id,name,mime),false);
         action(buttons,"ส่งออก",() -> exportDocument(id,name,mime),false);
@@ -511,6 +529,7 @@ public class MainActivity extends Activity {
         },false);
     }
     private void openDocument(String id,String name,String mime) {
+        if(InlineImages.isImage(name,mime)){if(saveNote(false))startActivity(new Intent(this,PhotoActivity.class).putExtra("doc",id));return;}
         if(!mime.equals("application/pdf")&&!name.toLowerCase(Locale.ROOT).endsWith(".pdf")) {
             new PocketDialog.Builder(this).setTitle(name).setMessage("ไฟล์นี้เก็บไว้แล้ว สามารถส่งออกเพื่อเปิดด้วยแอปที่รองรับได้").setNegativeButton("ปิด",null).setPositiveButton("ส่งออก",(d,w) -> exportDocument(id,name,mime)).show();return;
         }
@@ -744,6 +763,7 @@ public class MainActivity extends Activity {
     @Override protected void onActivityResult(int request,int result,Intent data) {
         super.onActivityResult(request,result,data);
         if(request==DIAGRAM) {receiveDiagram(result,data);return;}
+        if(request==IMAGE){if(result==RESULT_OK&&data!=null&&data.getData()!=null)importImages(Collections.singletonList(data.getData()),()->{});else{photoAt=-1;photoHash=null;}return;}
         long attach=pendingAttach;if(request==PICK) pendingAttach=-1;
         if(result!=RESULT_OK||data==null||data.getData()==null) return;
         Uri uri=data.getData();
@@ -809,7 +829,7 @@ public class MainActivity extends Activity {
     }
     @Override protected void onPause() {if(syncReceiverRegistered) {unregisterReceiver(syncReceiver);syncReceiverRegistered=false;}if(pageView!=null) pageView.commitGesture();saveNote(false);super.onPause();}
     @Override protected void onSaveInstanceState(Bundle state) {
-        saveNote(false);state.putString("pendingDiagram",pendingDiagram);state.putString("tab",tab);state.putString("filter",filter);state.putString("query",query);state.putBoolean("editor",editor);state.putLong("noteId",noteId);
+        saveNote(false);state.putInt("photoAt",photoAt);state.putLong("photoNote",photoNote);state.putString("photoHash",photoHash);state.putString("pendingDiagram",pendingDiagram);state.putString("tab",tab);state.putString("filter",filter);state.putString("query",query);state.putBoolean("editor",editor);state.putLong("noteId",noteId);
         state.putBoolean("soapOpen",activeSoapDialog!=null&&activeSoapDialog.isShowing());
         if(editor&&body!=null) {state.putInt("noteStart",body.getSelectionStart());state.putInt("noteEnd",body.getSelectionEnd());state.putInt("noteScroll",noteScroll.getScrollY());state.putString("expandedTable",expandedTableId);state.putInt("tablePage",tablePages.getOrDefault(expandedTableId,0));View focus=getCurrentFocus();if(focus!=null&&focus.getTag() instanceof String) state.putString("tableFocus",(String)focus.getTag());}
         state.putLong("pendingAttach",pendingAttach);state.putString("exportId",exportId);state.putString("annotatedExportId",annotatedExportId);

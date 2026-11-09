@@ -344,3 +344,7 @@ Pinned npm archive SHA-512: V80X1isSEvAewIL3xhmz/rVmc27CVljcsbWxkxlWJWY/1kQa4XOA
 The full Mermaid license is packaged in diagram/MERMAID-LICENSE.txt.
 The upstream renderer is retained verbatim, including its bundled legal notices.
 DOMPurify is distributed under the Apache-2.0 or MPL-2.0 license.
+
+AndroidX ExifInterface 1.3.7, Android Open Source Project — Apache License 2.0.
+https://developer.android.com/jetpack/androidx/releases/exifinterface
+Used to display camera orientation without modifying original image files.

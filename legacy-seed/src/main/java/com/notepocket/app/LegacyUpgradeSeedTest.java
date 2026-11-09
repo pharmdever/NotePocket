@@ -8,11 +8,11 @@ import org.junit.runner.RunWith;
 import java.io.*;
 import static org.junit.Assert.*;
 
-/** This instrumentation is run against the signed 0.11.0 APK before installing 0.12.0. */
+/** This instrumentation is run against the signed 0.12.0 APK before installing 0.13.0. */
 @RunWith(AndroidJUnit4.class)
 public class LegacyUpgradeSeedTest {
     @Test public void seedOriginalReleaseSchema() throws Exception {
-        Context c=InstrumentationRegistry.getInstrumentation().getTargetContext();assertEquals(12,c.getPackageManager().getPackageInfo(c.getPackageName(),0).versionCode);
+        Context c=InstrumentationRegistry.getInstrumentation().getTargetContext();assertEquals(13,c.getPackageManager().getPackageInfo(c.getPackageName(),0).versionCode);
         c.deleteDatabase("notepocket.db");SQLiteDatabase db=c.openOrCreateDatabase("notepocket.db",0,null);
         try {
             db.execSQL("CREATE TABLE notes(id INTEGER PRIMARY KEY,title TEXT NOT NULL,body TEXT NOT NULL,updated INTEGER NOT NULL,rich TEXT NOT NULL DEFAULT '',folder TEXT NOT NULL DEFAULT 'ทั่วไป',pinned INTEGER NOT NULL DEFAULT 0,deleted INTEGER NOT NULL DEFAULT 0)");
@@ -36,6 +36,7 @@ public class LegacyUpgradeSeedTest {
 db.execSQL("UPDATE notes SET sync_id='upgrade-note-sync-77' WHERE id=77");db.execSQL("INSERT INTO sync_config(k,v) VALUES('upgrade-marker','keep')");ContentValues diagram=new ContentValues();diagram.put("id",78);diagram.put("title","Previous Mermaid source");diagram.put("body","before\n```mermaid\nflowchart TD\nA-->B\n```\nafter");diagram.put("updated",124);diagram.put("sync_id","upgrade-diagram-78");db.insertOrThrow("notes",null,diagram);db.setVersion(8);
         } finally {db.close();}
         try(OutputStream out=new FileOutputStream(new File(c.getFilesDir(),"release-upgrade-doc"))) {out.write(new byte[]{1,2,3,4,5,6});}
+        android.graphics.Bitmap photo=android.graphics.Bitmap.createBitmap(80,40,android.graphics.Bitmap.Config.ARGB_8888);photo.eraseColor(android.graphics.Color.BLUE);File photoFile=new File(c.getFilesDir(),"upgrade-photo-doc");try(OutputStream out=new FileOutputStream(photoFile)){photo.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out);}photo.recycle();SQLiteDatabase photoDb=c.openOrCreateDatabase("notepocket.db",0,null);try{ContentValues p=new ContentValues();p.put("id","upgrade-photo-doc");p.put("name","previous-photo.png");p.put("mime","image/png");p.put("size",photoFile.length());photoDb.insertOrThrow("docs",null,p);p.clear();p.put("id",79);p.put("title","Previous photo attachment");p.put("body","Photo attached before upgrade");p.put("updated",125);photoDb.insertOrThrow("notes",null,p);p.clear();p.put("note_id",79);p.put("doc_id","upgrade-photo-doc");photoDb.insertOrThrow("note_docs",null,p);}finally{photoDb.close();}
         String font="font-upgrade-preserved";File fontFile=new File(c.getFilesDir(),font);
         try(InputStream input=new FileInputStream(systemFont());OutputStream out=new FileOutputStream(fontFile)) {byte[] block=new byte[65536];int n;while((n=input.read(block))!=-1) out.write(block,0,n);}
         SQLiteDatabase seed=c.openOrCreateDatabase("notepocket.db",0,null);
