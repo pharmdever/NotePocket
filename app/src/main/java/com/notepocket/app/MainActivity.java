@@ -817,7 +817,7 @@ public class MainActivity extends Activity {
                 busy=false;if(progress!=null) {progress.dismiss();progress=null;}
                 if(isDestroyed()||isFinishing()) {store.close();return;}
                 setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
-                if(completed) success.run();toast(output);
+                if(pdf==null)getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR|View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);if(completed) success.run();toast(output);
             });
         },"NotePocket-IO").start();
     }
