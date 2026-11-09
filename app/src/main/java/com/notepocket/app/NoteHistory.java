@@ -18,5 +18,6 @@ public final class NoteHistory {
     public boolean canUndo() {return !undo.isEmpty();}public boolean canRedo() {return !redo.isEmpty();}
     public State undo(State current) {if(undo.isEmpty()) return null;State state=undo.removeLast();bytes-=state.bytes;redo.addLast(current);bytes+=current.bytes;lastTyping=0;trim();return state;}
     public State redo(State current) {if(redo.isEmpty()) return null;State state=redo.removeLast();bytes-=state.bytes;undo.addLast(current);bytes+=current.bytes;lastTyping=0;trim();return state;}
+    public void breakTyping() {lastTyping=0;}
     public void clear() {undo.clear();redo.clear();bytes=0;lastTyping=0;}
 }
