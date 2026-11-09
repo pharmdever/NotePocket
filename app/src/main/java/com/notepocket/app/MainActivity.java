@@ -247,7 +247,7 @@ public class MainActivity extends Activity {
             view.setPadding(dp(10),insets.getSystemWindowInsetTop()+dp(4),dp(10),bottom+dp(4));
             boolean landscape=getResources().getConfiguration().orientation==android.content.res.Configuration.ORIENTATION_LANDSCAPE;
             noteHeader.setVisibility(keyboard&&landscape?View.GONE:View.VISIBLE);savedLabel.setVisibility(keyboard?View.GONE:View.VISIBLE);
-            if(noteToolStatus!=null) noteToolStatus.setVisibility(keyboard&&landscape?View.GONE:View.VISIBLE);
+            if(noteToolStatus!=null) ((View)noteToolStatus.getParent()).setVisibility(keyboard&&landscape?View.GONE:View.VISIBLE);
             followNoteCursor();return insets;
         });root.requestApplyInsets();updateNoteTools();
         root.setFocusableInTouchMode(true);root.requestFocus();
