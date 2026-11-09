@@ -11,6 +11,7 @@ import android.provider.MediaStore;
 import android.text.*;
 import android.text.style.ForegroundColorSpan;
 import android.view.*;
+import android.widget.TextView;
 import android.view.inputmethod.*;
 import androidx.core.view.inputmethod.EditorInfoCompat;
 import androidx.exifinterface.media.ExifInterface;
