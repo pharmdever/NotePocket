@@ -8,8 +8,9 @@ import java.util.function.Supplier;
 public final class NoteHistory {
     public static final long MAX_BYTES=4L*1024*1024;
     public static final class State {
-        public final String title,soap;public final Spanned body;public final List<NoteTable> tables;public final int start,end;final long bytes;
-        public State(String title,Spanned body,List<NoteTable> tables,String soap,int start,int end) {this.title=title;this.body=NoteFormat.snapshot(body);this.tables=NoteTable.copy(tables);this.soap=soap;this.start=start;this.end=end;long size=1024L+2L*(title.length()+body.length()+soap.length())+64L*body.getSpans(0,body.length(),Object.class).length;for(NoteTable t:tables) for(List<String> row:t.cells) for(String cell:row) size+=64L+cell.length()*2L;bytes=size;}
+        public final String title,soap,ink;public final Spanned body;public final List<NoteTable> tables;public final int start,end;final long bytes;
+        public State(String title,Spanned body,List<NoteTable> tables,String soap,int start,int end) {this(title,body,tables,soap,start,end,new NoteInk().json());}
+        public State(String title,Spanned body,List<NoteTable> tables,String soap,int start,int end,String ink) {this.ink=ink;this.title=title;this.body=NoteFormat.snapshot(body);this.tables=NoteTable.copy(tables);this.soap=soap;this.start=start;this.end=end;long size=1024L+2L*(title.length()+body.length()+soap.length()+ink.length())+64L*body.getSpans(0,body.length(),Object.class).length;for(NoteTable t:tables) for(List<String> row:t.cells) for(String cell:row) size+=64L+cell.length()*2L;bytes=size;}
     }
     private final Deque<State> undo=new ArrayDeque<>(),redo=new ArrayDeque<>();private long lastTyping,bytes;
     public void remember(Supplier<State> capture,boolean typing) {long now=android.os.SystemClock.uptimeMillis();boolean boundary=!typing||lastTyping==0||now-lastTyping>750;lastTyping=typing?now:0;for(State state:redo) bytes-=state.bytes;redo.clear();if(boundary) {State state=capture.get();if(state.bytes>MAX_BYTES) {undo.clear();bytes=0;return;}undo.addLast(state);bytes+=state.bytes;trim();}}

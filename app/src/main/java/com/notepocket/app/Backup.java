@@ -64,7 +64,7 @@ public final class Backup {
                     JSONObject row=input.getJSONObject(i);long old=row.getLong("id");
                     if(notes.containsKey(old)) throw new IOException("Duplicate note");
                     ContentValues v=new ContentValues();
-                    for(String key:new String[]{"title","body","rich","folder"}) v.put(key,row.getString(key));
+                    NoteInk.validateRich(row.getString("rich"));for(String key:new String[]{"title","body","rich","folder"}) v.put(key,row.getString(key));
                     v.put("soap",new SoapDraft(row.optString("soap","{}")).json());store.createFolder(row.getString("folder"));
                     v.put("tables",NoteTable.encode(NoteTable.decode(row.optString("tables","[]"))));
                     v.put("updated",row.getLong("updated"));v.put("pinned",row.getInt("pinned")==0?0:1);v.put("deleted",row.getInt("deleted")==0?0:1);

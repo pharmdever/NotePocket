@@ -40,7 +40,7 @@ final class InlineNoteEditText extends EditText implements AutoCloseable {
     void refreshDiagrams(){
         if(closing||renderer==null||rebuilding)return;rebuilding=true;
         try{
-            Editable text=getText();Map<String,InlineDiagramSpan> old=new HashMap<>();for(InlineDiagramSpan span:spans()){old.put(span.key,span);text.removeSpan(span);}
+            Editable text=getText();Map<String,InlineDiagramSpan> old=new HashMap<>();for(InlineDiagramSpan span:spans()){if(span instanceof InlineTableSpan)continue;old.put(span.key,span);text.removeSpan(span);}
             for(DiagramSource.Block b:DiagramSource.find(text.toString())){
                 String code;try{code=DiagramSource.clean(b.code);}catch(IllegalArgumentException e){continue;}
                 String key=DiagramCache.key(code);addSpan(text,old,key,false,b.start,b.end);if(bitmaps.get(key)==null){if(mediaFile(key).isFile())load(key);else if(!failed.contains(key))renderer.request(code);}

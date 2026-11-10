@@ -5,7 +5,7 @@ import android.text.*;
 import android.text.style.*;
 
 /** A whole Mermaid source block behaves as one visual object without changing the stored text. */
-final class InlineDiagramSpan extends ReplacementSpan implements LineHeightSpan {
+class InlineDiagramSpan extends ReplacementSpan implements LineHeightSpan {
     final InlineNoteEditText owner;final String key;final boolean photo;boolean failed;
     int imageWidth=800,imageHeight=360;
     private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);

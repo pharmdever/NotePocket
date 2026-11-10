@@ -8,11 +8,11 @@ import org.junit.runner.RunWith;
 import java.io.*;
 import static org.junit.Assert.*;
 
-/** This instrumentation is run against the signed 0.13.0 APK before installing 0.14.0. */
+/** This instrumentation is run against the signed 0.14.0 APK before installing 0.15.0. */
 @RunWith(AndroidJUnit4.class)
 public class LegacyUpgradeSeedTest {
     @Test public void seedOriginalReleaseSchema() throws Exception {
-        Context c=InstrumentationRegistry.getInstrumentation().getTargetContext();assertEquals(14,c.getPackageManager().getPackageInfo(c.getPackageName(),0).versionCode);
+        Context c=InstrumentationRegistry.getInstrumentation().getTargetContext();assertEquals(15,c.getPackageManager().getPackageInfo(c.getPackageName(),0).versionCode);
         c.deleteDatabase("notepocket.db");SQLiteDatabase db=c.openOrCreateDatabase("notepocket.db",0,null);
         try {
             db.execSQL("CREATE TABLE notes(id INTEGER PRIMARY KEY,title TEXT NOT NULL,body TEXT NOT NULL,updated INTEGER NOT NULL,rich TEXT NOT NULL DEFAULT '',folder TEXT NOT NULL DEFAULT 'ทั่วไป',pinned INTEGER NOT NULL DEFAULT 0,deleted INTEGER NOT NULL DEFAULT 0)");
